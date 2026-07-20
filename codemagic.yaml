@@ -11,6 +11,9 @@ workflows:
       app_store_connect: codemagic
 
     environment:
+      # Team variable group with CERTIFICATE_PRIVATE_KEY (same as WorkOrderAI)
+      groups:
+        - code-signing
       node: 22
       xcode: latest
       vars:
@@ -50,16 +53,19 @@ workflows:
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
 
-      # Do not use environment.ios_signing here — it fails before scripts if no
-      # App Store profile exists yet. Create/fetch via CLI instead.
+      # Requires environment.groups: code-signing (CERTIFICATE_PRIVATE_KEY).
+      # Do not use environment.ios_signing with this flow.
       - name: Set up code signing
         script: |
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
-          xcode-project use-profiles --project "$CM_BUILD_DIR/$XCODE_PROJECT"
+          xcode-project use-profiles \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --archive-method app-store
 
       - name: Build IPA
         script: |
