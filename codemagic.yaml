@@ -15,7 +15,7 @@ workflows:
       xcode: latest
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.leveluplife.app
+        bundle_identifier: com.coenenmarket.leveluplife
       vars:
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App

@@ -7,7 +7,7 @@
 | **PWA (Add to Home Screen)** | Ready | No |
 | **Capacitor native app** | Ready — Codemagic builds | Yes |
 
-**Bundle ID:** `com.leveluplife.app`  
+**Bundle ID:** `com.coenenmarket.leveluplife`  
 **Xcode project:** `ios/App/App.xcodeproj`  
 **Scheme:** `App`
 
@@ -69,7 +69,7 @@ Codemagic **automatic signing** (recommended):
 
 1. Codemagic → your app → **Distribution** → iOS code signing
 2. Enable **Automatic** with your App Store Connect integration
-3. Bundle ID: `com.leveluplife.app`
+3. Bundle ID: `com.coenenmarket.leveluplife`
 
 The workflow runs `app-store-connect fetch-signing-files` to create/fetch certificates.
 
@@ -78,7 +78,7 @@ The workflow runs `app-store-connect fetch-signing-files` to create/fetch certif
 1. App Store Connect → **Apps** → **+** → New App
 2. Platform: iOS
 3. Name: **Level Up Life**
-4. Bundle ID: `com.leveluplife.app` (register in Apple Developer → Identifiers first if needed)
+4. Bundle ID: `com.coenenmarket.leveluplife` (register in Apple Developer → Identifiers first if needed)
 5. SKU: `levelup-life` (any unique string)
 
 ### 5. Trigger a build
