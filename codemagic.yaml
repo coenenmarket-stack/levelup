@@ -13,6 +13,9 @@ workflows:
     environment:
       node: 22
       xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.coenenmarket.leveluplife
       vars:
         BUNDLE_ID: com.coenenmarket.leveluplife
         XCODE_PROJECT: ios/App/App.xcodeproj
@@ -52,12 +55,7 @@ workflows:
 
       - name: Set up code signing
         script: |
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
+          xcode-project use-profiles --project "$CM_BUILD_DIR/$XCODE_PROJECT"
 
       - name: Build IPA
         script: |
