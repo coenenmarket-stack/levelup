@@ -53,10 +53,20 @@ workflows:
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
 
-      # Requires environment.groups: code-signing (CERTIFICATE_PRIVATE_KEY).
-      # Do not use environment.ios_signing with this flow.
+      # Requires CERTIFICATE_PRIVATE_KEY in env group "code-signing"
+      # (same Apple Distribution private key used by WorkOrderAI).
       - name: Set up code signing
         script: |
+          set -euo pipefail
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "Missing CERTIFICATE_PRIVATE_KEY."
+            echo "Add it in Codemagic → levelup → Environment variables:"
+            echo "  name: CERTIFICATE_PRIVATE_KEY"
+            echo "  group: code-signing"
+            echo "  secret: yes"
+            echo "Reuse the WorkOrderAI distribution certificate private key, or create a new one."
+            exit 1
+          fi
           keychain initialize
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
