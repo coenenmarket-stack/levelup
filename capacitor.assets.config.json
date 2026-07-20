@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "icon": {
+      "sources": ["assets/icon.png"]
+    },
+    "splash": {
+      "sources": ["assets/splash.png"]
+    }
+  }
+}

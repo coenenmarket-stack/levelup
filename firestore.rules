@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Level Up Life — Firestore security rules
+//
+// Without Cloud Functions (Spark plan), game logic runs in the browser and
+// writes directly to Firestore. Per-user isolation is still enforced —
+// nobody can read or write anyone else's data — but the owner can update
+// any field of their own character (including XP/level/streak). A determined
+// user could edit their own progress via the browser console, but that only
+// cheats their own game.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // users/{uid} — profile + settings
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid);
+      allow delete: if isOwner(uid);
+    }
+
+    // characters/{uid} — the character sheet (1:1 with user)
+    match /characters/{uid} {
+      allow read, write: if isOwner(uid);
+
+      // Sub-collections under characters/{uid}
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
