@@ -11,9 +11,9 @@ workflows:
       app_store_connect: codemagic
 
     environment:
-      # Team variable group with CERTIFICATE_PRIVATE_KEY (same as WorkOrderAI)
+      # App-specific group: CERTIFICATE_PRIVATE_KEY for Level Up Life only
       groups:
-        - code-signing
+        - levelup-signing
       node: 22
       xcode: latest
       vars:
@@ -53,8 +53,7 @@ workflows:
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
 
-      # Requires CERTIFICATE_PRIVATE_KEY in env group "code-signing"
-      # (same Apple Distribution private key used by WorkOrderAI).
+      # Creates/fetches Level Up Life App Store profile + certificate for this key only.
       - name: Set up code signing
         script: |
           set -euo pipefail
@@ -62,9 +61,8 @@ workflows:
             echo "Missing CERTIFICATE_PRIVATE_KEY."
             echo "Add it in Codemagic → levelup → Environment variables:"
             echo "  name: CERTIFICATE_PRIVATE_KEY"
-            echo "  group: code-signing"
+            echo "  group: levelup-signing"
             echo "  secret: yes"
-            echo "Reuse the WorkOrderAI distribution certificate private key, or create a new one."
             exit 1
           fi
           keychain initialize

@@ -13,5 +13,10 @@ data.db-journal
 .env.*
 !.env.example
 
+# Local signing key material — never commit
+.tmp_cert_key.pem
+*.pem
+!**/node_modules/**/*.pem
+
 *.log
 .DS_Store
