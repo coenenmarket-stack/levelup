@@ -2,8 +2,17 @@
 // The config object is public by design (apiKey is an identifier, not a secret).
 // Security is enforced by Firestore rules + Auth restrictions in the Firebase console.
 
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import {
+  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  inMemoryPersistence,
+  GoogleAuthProvider,
+  type Auth,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
@@ -21,19 +30,30 @@ const firebaseConfig = {
 };
 
 // Avoid double-init in Vite HMR
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const app: FirebaseApp = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+/**
+ * Capacitor WKWebView can hang forever on the default getAuth() + browser
+ * persistence path (IndexedDB / redirect-result handshake). initializeAuth with
+ * an explicit persistence chain avoids the infinite "loading" gate on iOS.
+ */
+function createAuth(firebaseApp: FirebaseApp): Auth {
+  if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
+    try {
+      return initializeAuth(firebaseApp, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence],
+      });
+    } catch {
+      // Already initialized (HMR / re-import)
+    }
+  }
+  return getAuth(firebaseApp);
+}
+
+export const auth = createAuth(app);
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "us-central1");
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
-
-// Persist auth state across reloads. Wrapped in try/catch because the
-// Perplexity preview iframe sandboxes IndexedDB; in that case Firebase falls
-// back to in-memory persistence automatically.
-setPersistence(auth, browserLocalPersistence).catch(() => {
-  // intentional no-op — Firebase will use in-memory persistence as fallback
-});
 
 export default app;

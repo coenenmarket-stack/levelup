@@ -17,8 +17,9 @@ async function initNativeShell() {
   } catch {
     // Status bar plugin unavailable in web preview
   }
+  // Always dismiss splash once JS is alive so a hung Auth boot cannot look like a frozen launch.
   try {
-    await SplashScreen.hide();
+    await SplashScreen.hide({ fadeOutDuration: 200 });
   } catch {
     // noop
   }

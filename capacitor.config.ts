@@ -4,6 +4,13 @@ const config: CapacitorConfig = {
   appId: "com.coenenmarket.leveluplife",
   appName: "Level Up Life",
   webDir: "dist/public",
+  // https://localhost is an authorized Firebase Auth domain and avoids the
+  // capacitor:// origin that can stall the web Auth SDK inside WKWebView.
+  server: {
+    iosScheme: "https",
+    androidScheme: "https",
+    hostname: "localhost",
+  },
   ios: {
     contentInset: "automatic",
     allowsLinkPreview: false,
@@ -16,6 +23,7 @@ const config: CapacitorConfig = {
       backgroundColor: "#0d1117",
       androidSplashResourceName: "splash",
       showSpinner: false,
+      launchFadeOutDuration: 200,
     },
     StatusBar: {
       style: "DARK",

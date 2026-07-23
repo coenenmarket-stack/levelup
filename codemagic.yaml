@@ -45,6 +45,20 @@ workflows:
       - name: Sync Capacitor iOS
         script: npx cap sync ios
 
+      - name: Verify web assets synced into iOS
+        script: |
+          set -euo pipefail
+          test -f ios/App/App/public/index.html
+          test -f ios/App/App/capacitor.config.json
+          # Fail the build if the web bundle did not sync (blank WKWebView forever).
+          if ! ls ios/App/App/public/assets/*.js >/dev/null 2>&1; then
+            echo "Missing bundled JS under ios/App/App/public/assets"
+            ls -la ios/App/App/public || true
+            exit 1
+          fi
+          echo "Synced web assets OK:"
+          ls ios/App/App/public | head
+
       - name: Generate iOS icons and splash
         script: npm run cap:assets
 

@@ -124,15 +124,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Subscribe to Firebase Auth state.
+  // On Capacitor iOS, getRedirectResult / IndexedDB persistence can hang and
+  // never fire onAuthStateChanged — which left TestFlight on the spinner forever.
   useEffect(() => {
-    // Complete Google redirect sign-in (required for iOS Safari).
-    getRedirectResult(auth)
+    let cancelled = false;
+    const AUTH_BOOT_MS = 4000;
+    const REDIRECT_MS = 2500;
+
+    const bootTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        console.warn("Auth boot timed out — showing sign-in");
+        setIsLoading(false);
+      }
+    }, AUTH_BOOT_MS);
+
+    // Complete Google redirect sign-in (required for iOS Safari), but never block boot.
+    void Promise.race([
+      getRedirectResult(auth),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), REDIRECT_MS)),
+    ])
       .then(async (result) => {
         if (result?.user) await ensureProfile(result.user, "google");
       })
       .catch((e) => console.error("getRedirectResult failed", e));
 
     const unsub = onAuthStateChanged(auth, async (user) => {
+      if (cancelled) return;
       setFbUser(user);
       if (!user) {
         setProfile(null);
@@ -147,15 +164,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const p = await ensureProfile(user, providerKey);
         // One-time schema migration: drops legacy character if pre-v3 schema.
         const migrated = await migrateIfStale(user.uid);
-        setProfile(migrated ? { ...p, onboarded: false } : p);
+        if (!cancelled) setProfile(migrated ? { ...p, onboarded: false } : p);
       } catch (e) {
         console.error("ensureProfile failed", e);
-        setProfile(null);
+        if (!cancelled) setProfile(null);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     });
-    return unsub;
+    return () => {
+      cancelled = true;
+      window.clearTimeout(bootTimer);
+      unsub();
+    };
   }, []);
 
   // Live-subscribe to the user's profile doc so onboarded flag flips immediately

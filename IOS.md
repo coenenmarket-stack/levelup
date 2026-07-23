@@ -110,7 +110,7 @@ Add if missing:
 
 - `level-up-life-73702.web.app`
 - `level-up-life-73702.firebaseapp.com`
-- `localhost` (Capacitor dev)
+- `localhost` (Capacitor uses `https://localhost` as the WKWebView origin)
 
 ### Google OAuth (Google Cloud Console)
 
