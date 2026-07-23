@@ -47,6 +47,17 @@
 	<string>Choose a photo for your hero avatar.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.coenenmarket.leveluplife</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.coenenmarket.leveluplife</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

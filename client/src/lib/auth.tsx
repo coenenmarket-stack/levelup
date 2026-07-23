@@ -13,7 +13,9 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
+  signInWithCredential,
   getRedirectResult,
+  GoogleAuthProvider,
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -24,12 +26,19 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
 } from "firebase/auth";
+import { App as CapApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, collection, getDocs, writeBatch } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
 import { auth, db, googleProvider } from "./firebase";
 import type { Me } from "./types";
 import { SCHEMA_VERSION } from "./gameLogic";
-import { shouldUseGoogleRedirect } from "./ios";
+import {
+  shouldUseGoogleRedirect,
+  shouldUseNativeGoogleBrowser,
+  NATIVE_GOOGLE_AUTH_URL,
+  NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX,
+} from "./ios";
 
 // If the user's existing character is from an older schema (pre-6-category model),
 // wipe it so they're forced through the new Life Assessment on next login.
@@ -209,7 +218,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
+  const googleSignInNativeBrowser = () =>
+    new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let urlHandle: { remove: () => Promise<void> } | null = null;
+      let browserHandle: { remove: () => Promise<void> } | null = null;
+
+      const finish = async (err?: unknown) => {
+        if (settled) return;
+        settled = true;
+        await Promise.allSettled([
+          urlHandle?.remove() ?? Promise.resolve(),
+          browserHandle?.remove() ?? Promise.resolve(),
+        ]);
+        try {
+          await Browser.close();
+        } catch {
+          // already closed
+        }
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      };
+
+      void (async () => {
+        try {
+          urlHandle = await CapApp.addListener("appUrlOpen", async ({ url }) => {
+            if (!url.startsWith(NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX)) return;
+            try {
+              const parsed = new URL(url);
+              const error = parsed.searchParams.get("error");
+              if (error) throw new Error(error);
+              const idToken = parsed.searchParams.get("idToken");
+              if (!idToken) throw new Error("Missing Google ID token");
+              const accessToken = parsed.searchParams.get("accessToken") || undefined;
+              const credential = GoogleAuthProvider.credential(idToken, accessToken);
+              const cred = await signInWithCredential(auth, credential);
+              await ensureProfile(cred.user, "google");
+              await finish();
+            } catch (e) {
+              await finish(e);
+            }
+          });
+          browserHandle = await Browser.addListener("browserFinished", () => {
+            // Deep-link return can race browserFinished — give the callback a moment.
+            window.setTimeout(() => {
+              void finish(new Error("Google sign-in cancelled"));
+            }, 800);
+          });
+          await Browser.open({
+            url: NATIVE_GOOGLE_AUTH_URL,
+            presentationStyle: "fullscreen",
+          });
+        } catch (e) {
+          await finish(e);
+        }
+      })();
+    });
+
   const googleSignIn = async () => {
+    // WKWebView blocks Google OAuth (disallowed_useragent). Use system Safari.
+    if (shouldUseNativeGoogleBrowser()) {
+      await googleSignInNativeBrowser();
+      return;
+    }
     if (shouldUseGoogleRedirect()) {
       await signInWithRedirect(auth, googleProvider);
       return;

@@ -29,7 +29,21 @@ export function isIOSSafari(): boolean {
   return isAppleDevice && isSafari && !isStandalonePwa();
 }
 
-/** Google sign-in popups fail on iOS Safari and in Capacitor WKWebView — use redirect. */
+/**
+ * In-app WebView Google OAuth is blocked (disallowed_useragent).
+ * - Native Capacitor: open system Safari via Browser plugin, then deep-link back.
+ * - Mobile Safari / PWA: Firebase redirect flow.
+ */
 export function shouldUseGoogleRedirect(): boolean {
-  return isIOS() || isNativeApp();
+  return !isNativeApp() && isIOS();
 }
+
+export function shouldUseNativeGoogleBrowser(): boolean {
+  return isNativeApp();
+}
+
+export const NATIVE_GOOGLE_AUTH_URL =
+  "https://level-up-life-73702.web.app/native-google-auth.html";
+
+export const NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX =
+  "com.coenenmarket.leveluplife://google-auth";

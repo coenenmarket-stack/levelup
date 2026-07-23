@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in with Google — Level Up Life</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    p { color: #c9d1d9; max-width: 22rem; line-height: 1.5; }
+    .err { color: #ff7b72; }
+    button {
+      margin-top: 1rem;
+      border: 0;
+      border-radius: 10px;
+      padding: 0.75rem 1.25rem;
+      font-weight: 700;
+      background: #e6edf3;
+      color: #0d1117;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sign in with Google</h1>
+    <p id="status">Opening Google…</p>
+    <button id="retry" hidden type="button">Try again</button>
+  </main>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+    } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+    const CALLBACK = "com.coenenmarket.leveluplife://google-auth";
+    const statusEl = document.getElementById("status");
+    const retryBtn = document.getElementById("retry");
+
+    const app = initializeApp({
+      apiKey: "AIzaSyBRtjVakNyozHXP_lVKoDuINTumRYOl7i4",
+      authDomain: "level-up-life-73702.web.app",
+      projectId: "level-up-life-73702",
+      storageBucket: "level-up-life-73702.firebasestorage.app",
+      messagingSenderId: "901479824639",
+      appId: "1:901479824639:web:4948da9080d5aba934e0ca",
+    });
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
+    function sendBack(params) {
+      const qs = new URLSearchParams(params);
+      window.location.href = `${CALLBACK}?${qs.toString()}`;
+    }
+
+    async function run() {
+      statusEl.textContent = "Continue in the Google window…";
+      statusEl.classList.remove("err");
+      retryBtn.hidden = true;
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const cred = GoogleAuthProvider.credentialFromResult(result);
+        if (!cred?.idToken) throw new Error("Missing Google ID token");
+        const payload = { idToken: cred.idToken };
+        if (cred.accessToken) payload.accessToken = cred.accessToken;
+        statusEl.textContent = "Returning to Level Up Life…";
+        sendBack(payload);
+      } catch (e) {
+        const message = e?.message || "Google sign-in failed";
+        statusEl.textContent = message;
+        statusEl.classList.add("err");
+        retryBtn.hidden = false;
+        // Also bounce the error back so the app can clear its waiting state.
+        sendBack({ error: message });
+      }
+    }
+
+    retryBtn.addEventListener("click", () => void run());
+    void run();
+  </script>
+</body>
+</html>
