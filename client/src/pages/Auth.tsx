@@ -147,7 +147,19 @@ export default function AuthPage() {
   if (mode === "login") {
     return (
       <AuthShell
-        footer={<span>By continuing, you agree to the Terms & Privacy Policy.</span>}
+        footer={
+          <span>
+            By continuing, you agree to the{" "}
+            <a className="underline underline-offset-2" href="/terms.html" target="_blank" rel="noreferrer">
+              Terms
+            </a>{" "}
+            &{" "}
+            <a className="underline underline-offset-2" href="/privacy.html" target="_blank" rel="noreferrer">
+              Privacy Policy
+            </a>
+            .
+          </span>
+        }
       >
         <div className="text-center space-y-1">
           <h1 className="text-2xl font-extrabold tracking-tight">Welcome back</h1>
@@ -197,7 +209,21 @@ export default function AuthPage() {
   // ---- SIGNUP ----
   if (mode === "signup") {
     return (
-      <AuthShell footer={<span>By creating an account, you agree to the Terms & Privacy Policy.</span>}>
+      <AuthShell
+        footer={
+          <span>
+            By creating an account, you agree to the{" "}
+            <a className="underline underline-offset-2" href="/terms.html" target="_blank" rel="noreferrer">
+              Terms
+            </a>{" "}
+            &{" "}
+            <a className="underline underline-offset-2" href="/privacy.html" target="_blank" rel="noreferrer">
+              Privacy Policy
+            </a>
+            .
+          </span>
+        }
+      >
         <button onClick={() => setMode("login")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" data-testid="link-back-login">
           <ChevronLeft className="w-3.5 h-3.5" /> Back
         </button>
