@@ -6,14 +6,17 @@
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
+exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 const generative_ai_1 = require("@google/generative-ai");
+const node_crypto_1 = require("node:crypto");
 const zod_1 = require("zod");
 const coachContext_1 = require("./coachContext");
+const NATIVE_GOOGLE_SCHEME = "com.coenenmarket.leveluplife://google-auth";
+const NATIVE_GOOGLE_SESSION_TTL_MS = 5 * 60 * 1000;
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
 // Gemini API key as a Secret. Set with:
@@ -775,5 +778,88 @@ exports.generateQuests = (0, https_1.onCall)({ region: "us-central1", secrets: [
         refreshed: refresh,
     });
     return { quests: allQuests, cached: false };
+});
+// ----------------------------------------------------------------------------
+// Native Google sign-in bridge (Capacitor / SFSafariViewController)
+// Store tokens under a short code, then deep-link back into the app.
+// SFSafariViewController often fails on custom-scheme 302s, so the auth page
+// exposes a tappable deep link. completeNativeGoogleAuth only redirects —
+// it does not re-check Firestore (that caused false "Session expired" screens).
+// ----------------------------------------------------------------------------
+function readQueryCode(req) {
+    const raw = req.query.code;
+    if (typeof raw === "string")
+        return raw;
+    if (Array.isArray(raw) && typeof raw[0] === "string")
+        return raw[0];
+    return "";
+}
+exports.createNativeGoogleSession = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "POST required" });
+        return;
+    }
+    const body = typeof req.body === "string"
+        ? (() => { try {
+            return JSON.parse(req.body);
+        }
+        catch {
+            return {};
+        } })()
+        : (req.body || {});
+    const idToken = typeof body.idToken === "string" ? body.idToken : "";
+    const accessToken = typeof body.accessToken === "string" ? body.accessToken : null;
+    if (!idToken || idToken.length < 20) {
+        res.status(400).json({ error: "idToken required" });
+        return;
+    }
+    const code = (0, node_crypto_1.randomBytes)(24).toString("hex");
+    try {
+        await db.collection("nativeGoogleSessions").doc(code).set({
+            idToken,
+            accessToken,
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            expiresAtMs: Date.now() + NATIVE_GOOGLE_SESSION_TTL_MS,
+        });
+    }
+    catch (err) {
+        console.error("nativeGoogleSessions write failed", err);
+        res.status(500).json({ error: "Could not create sign-in session" });
+        return;
+    }
+    const deepLink = `${NATIVE_GOOGLE_SCHEME}?code=${encodeURIComponent(code)}`;
+    const redirect = `https://level-up-life-73702.web.app/native-auth-finish.html?code=${encodeURIComponent(code)}`;
+    res.json({ code, deepLink, redirect });
+});
+/** Optional HTTPS hop that opens the app via custom-scheme redirect. */
+exports.completeNativeGoogleAuth = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    const code = readQueryCode(req);
+    if (!code) {
+        res.status(400).send("Missing code. Close this window and try Google sign-in again.");
+        return;
+    }
+    // Do not touch Firestore here — just send the user back to the app.
+    res.redirect(302, `${NATIVE_GOOGLE_SCHEME}?code=${encodeURIComponent(code)}`);
+});
+exports.claimNativeGoogleSession = (0, https_1.onCall)(async (request) => {
+    const code = typeof request.data?.code === "string" ? request.data.code.trim() : "";
+    if (!code)
+        throw new https_1.HttpsError("invalid-argument", "code required");
+    const ref = db.collection("nativeGoogleSessions").doc(code);
+    const snap = await ref.get();
+    if (!snap.exists)
+        throw new https_1.HttpsError("not-found", "Sign-in session expired. Try again.");
+    const data = snap.data();
+    await ref.delete().catch(() => { });
+    if (data.expiresAtMs && Date.now() > data.expiresAtMs) {
+        throw new https_1.HttpsError("deadline-exceeded", "Sign-in session expired. Try again.");
+    }
+    if (!data.idToken)
+        throw new https_1.HttpsError("internal", "Session missing token");
+    return { idToken: data.idToken, accessToken: data.accessToken || null };
 });
 //# sourceMappingURL=index.js.map

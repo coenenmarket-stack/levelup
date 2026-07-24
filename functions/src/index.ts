@@ -842,9 +842,18 @@ export const generateQuests = onCall({ region: "us-central1", secrets: [GEMINI_A
 
 // ----------------------------------------------------------------------------
 // Native Google sign-in bridge (Capacitor / SFSafariViewController)
-// Custom-scheme redirects from JS often never reach the app. An HTTPS 302 to
-// the app scheme is reliable, and a short code avoids oversized JWT URLs.
+// Store tokens under a short code, then deep-link back into the app.
+// SFSafariViewController often fails on custom-scheme 302s, so the auth page
+// exposes a tappable deep link. completeNativeGoogleAuth only redirects —
+// it does not re-check Firestore (that caused false "Session expired" screens).
 // ----------------------------------------------------------------------------
+
+function readQueryCode(req: { query: Record<string, unknown> }): string {
+  const raw = req.query.code;
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw) && typeof raw[0] === "string") return raw[0];
+  return "";
+}
 
 export const createNativeGoogleSession = onRequest({ cors: true }, async (req, res) => {
   if (req.method === "OPTIONS") {
@@ -865,34 +874,31 @@ export const createNativeGoogleSession = onRequest({ cors: true }, async (req, r
     return;
   }
   const code = randomBytes(24).toString("hex");
-  await db.collection("nativeGoogleSessions").doc(code).set({
-    idToken,
-    accessToken,
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAtMs: Date.now() + NATIVE_GOOGLE_SESSION_TTL_MS,
-  });
-  const redirect = `https://us-central1-level-up-life-73702.cloudfunctions.net/completeNativeGoogleAuth?code=${encodeURIComponent(code)}`;
-  res.json({ code, redirect });
+  try {
+    await db.collection("nativeGoogleSessions").doc(code).set({
+      idToken,
+      accessToken,
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAtMs: Date.now() + NATIVE_GOOGLE_SESSION_TTL_MS,
+    });
+  } catch (err: any) {
+    console.error("nativeGoogleSessions write failed", err);
+    res.status(500).json({ error: "Could not create sign-in session" });
+    return;
+  }
+  const deepLink = `${NATIVE_GOOGLE_SCHEME}?code=${encodeURIComponent(code)}`;
+  const redirect = `https://level-up-life-73702.web.app/native-auth-finish.html?code=${encodeURIComponent(code)}`;
+  res.json({ code, deepLink, redirect });
 });
 
+/** Optional HTTPS hop that opens the app via custom-scheme redirect. */
 export const completeNativeGoogleAuth = onRequest({ cors: true }, async (req, res) => {
-  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const code = readQueryCode(req);
   if (!code) {
-    res.status(400).send("Missing code");
+    res.status(400).send("Missing code. Close this window and try Google sign-in again.");
     return;
   }
-  const snap = await db.collection("nativeGoogleSessions").doc(code).get();
-  if (!snap.exists) {
-    res.status(404).send("Session expired. Close this window and try again in the app.");
-    return;
-  }
-  const expiresAtMs = Number(snap.data()?.expiresAtMs || 0);
-  if (expiresAtMs && Date.now() > expiresAtMs) {
-    await snap.ref.delete().catch(() => {});
-    res.status(410).send("Session expired. Close this window and try again in the app.");
-    return;
-  }
-  // HTTP 302 to custom scheme — SFSafariViewController hands this to the app.
+  // Do not touch Firestore here — just send the user back to the app.
   res.redirect(302, `${NATIVE_GOOGLE_SCHEME}?code=${encodeURIComponent(code)}`);
 });
 

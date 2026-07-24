@@ -21,7 +21,7 @@
     .err { color: #ff7b72; }
     button, a.btn {
       display: inline-block;
-      margin-top: 1rem;
+      margin: 0.5rem 0.35rem 0;
       border: 0;
       border-radius: 10px;
       padding: 0.75rem 1.25rem;
@@ -31,7 +31,6 @@
       text-decoration: none;
       cursor: pointer;
     }
-    a.secondary { display: block; margin-top: 1rem; color: #58a6ff; font-size: 0.95rem; }
   </style>
 </head>
 <body>
@@ -39,7 +38,7 @@
     <h1>Sign in with Google</h1>
     <p id="status">Preparing Google sign-in…</p>
     <button id="retry" hidden type="button">Try again</button>
-    <a id="openApp" class="btn" hidden href="#">Open Level Up Life</a>
+    <a id="openApp" class="btn" hidden href="#">Tap to return to the app</a>
   </main>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
@@ -73,7 +72,6 @@
       statusEl.textContent = message;
       statusEl.classList.add("err");
       retryBtn.hidden = false;
-      openApp.hidden = true;
     }
 
     async function handoff(idToken, accessToken) {
@@ -85,14 +83,17 @@
         body: JSON.stringify({ idToken, accessToken: accessToken || undefined }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.redirect) {
+      if (!res.ok || !(data.deepLink || data.redirect)) {
         throw new Error(data.error || "Could not finish Google sign-in");
       }
-      openApp.href = data.redirect;
+      // Prefer the custom-scheme deep link for the tappable button (most reliable).
+      const deepLink = data.deepLink || ("com.coenenmarket.leveluplife://google-auth?code=" + encodeURIComponent(data.code));
+      const finishPage = data.redirect || deepLink;
+      openApp.href = deepLink;
       openApp.hidden = false;
       openApp.textContent = "Tap to return to the app";
-      // Prefer HTTPS 302 bridge (reliable in SFSafariViewController).
-      window.location.replace(data.redirect);
+      // Hosting finish page attempts the deep link; keep this window usable if it fails.
+      window.location.replace(finishPage);
     }
 
     async function run() {
@@ -101,7 +102,6 @@
       retryBtn.hidden = true;
       openApp.hidden = true;
       try {
-        // Complete redirect return if we just came back from Google.
         const redirected = await getRedirectResult(auth);
         if (redirected?.user) {
           const cred = GoogleAuthProvider.credentialFromResult(redirected);
@@ -116,7 +116,6 @@
           if (!cred?.idToken) throw new Error("Missing Google ID token");
           await handoff(cred.idToken, cred.accessToken || undefined);
         } catch (popupErr) {
-          // Popup often blocked in in-app browsers — fall back to redirect.
           statusEl.textContent = "Redirecting to Google…";
           await signInWithRedirect(auth, provider);
         }
