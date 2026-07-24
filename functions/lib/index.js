@@ -6,7 +6,7 @@
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
+exports.findFacebookFriends = exports.linkFacebookAccount = exports.claimNativeFacebookSession = exports.createNativeFacebookSession = exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.requestFriendByUid = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
@@ -1000,6 +1000,7 @@ async function buildPublicProfilePayload(uid, inviteCode) {
         lifeGoal: showLifeGoal ? (char.lifeGoal ?? null) : null,
         showLifeGoal,
         inviteCode: code,
+        facebookId: existing.exists ? (existing.data().facebookId ?? null) : null,
         updatedAt: nowISO(),
     };
 }
@@ -1039,6 +1040,9 @@ exports.redeemInviteCode = (0, https_1.onCall)({ region: "us-central1" }, async 
         throw new https_1.HttpsError("not-found", "Invite code not found");
     if (targetUid === uid)
         throw new https_1.HttpsError("invalid-argument", "You can't friend yourself");
+    return createOrAcceptFriendship(uid, targetUid);
+});
+async function createOrAcceptFriendship(uid, targetUid) {
     const id = friendshipId(uid, targetUid);
     const ref = db.doc(`friendships/${id}`);
     const snap = await ref.get();
@@ -1063,6 +1067,19 @@ exports.redeemInviteCode = (0, https_1.onCall)({ region: "us-central1" }, async 
         createdAt: firestore_1.FieldValue.serverTimestamp(),
     });
     return { status: "pending", friendshipId: id };
+}
+/** Add friend by Firebase uid (used after Facebook friend discovery). */
+exports.requestFriendByUid = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const targetUid = typeof req.data?.friendUid === "string" ? req.data.friendUid.trim() : "";
+    if (!targetUid)
+        throw new https_1.HttpsError("invalid-argument", "friendUid required");
+    if (targetUid === uid)
+        throw new https_1.HttpsError("invalid-argument", "You can't friend yourself");
+    const profile = await db.doc(`publicProfiles/${targetUid}`).get();
+    if (!profile.exists)
+        throw new https_1.HttpsError("not-found", "User not found");
+    return createOrAcceptFriendship(uid, targetUid);
 });
 exports.respondToFriendRequest = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
     const uid = requireAuth(req);
@@ -1205,5 +1222,147 @@ exports.cheerActivity = (0, https_1.onCall)({ region: "us-central1" }, async (re
         cheerOf: activityId,
     });
     return { cheerCount: cheeredBy.length, already: false };
+});
+// ----------------------------------------------------------------------------
+// Facebook Login bridge + friend discovery
+// ----------------------------------------------------------------------------
+const NATIVE_FACEBOOK_SCHEME = "com.coenenmarket.leveluplife://facebook-auth";
+const NATIVE_FACEBOOK_SESSION_TTL_MS = 5 * 60 * 1000;
+exports.createNativeFacebookSession = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "POST required" });
+        return;
+    }
+    const body = typeof req.body === "string"
+        ? (() => { try {
+            return JSON.parse(req.body);
+        }
+        catch {
+            return {};
+        } })()
+        : (req.body || {});
+    const accessToken = typeof body.accessToken === "string" ? body.accessToken : "";
+    if (!accessToken || accessToken.length < 20) {
+        res.status(400).json({ error: "accessToken required" });
+        return;
+    }
+    const code = (0, node_crypto_1.randomBytes)(24).toString("hex");
+    try {
+        await db.collection("nativeFacebookSessions").doc(code).set({
+            accessToken,
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            expiresAtMs: Date.now() + NATIVE_FACEBOOK_SESSION_TTL_MS,
+        });
+    }
+    catch (err) {
+        console.error("nativeFacebookSessions write failed", err);
+        res.status(500).json({ error: "Could not create Facebook session" });
+        return;
+    }
+    const deepLink = `${NATIVE_FACEBOOK_SCHEME}?code=${encodeURIComponent(code)}`;
+    res.json({ code, deepLink });
+});
+exports.claimNativeFacebookSession = (0, https_1.onCall)(async (request) => {
+    const code = typeof request.data?.code === "string" ? request.data.code.trim() : "";
+    if (!code)
+        throw new https_1.HttpsError("invalid-argument", "code required");
+    const ref = db.collection("nativeFacebookSessions").doc(code);
+    const snap = await ref.get();
+    if (!snap.exists)
+        throw new https_1.HttpsError("not-found", "Sign-in session expired. Try again.");
+    const data = snap.data();
+    await ref.delete().catch(() => { });
+    if (data.expiresAtMs && Date.now() > data.expiresAtMs) {
+        throw new https_1.HttpsError("deadline-exceeded", "Sign-in session expired. Try again.");
+    }
+    if (!data.accessToken)
+        throw new https_1.HttpsError("internal", "Session missing token");
+    return { accessToken: data.accessToken };
+});
+async function facebookGraphMe(accessToken) {
+    const url = `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok || !data?.id) {
+        throw new https_1.HttpsError("unauthenticated", data?.error?.message || "Invalid Facebook token");
+    }
+    return { id: String(data.id), name: data.name ? String(data.name) : undefined };
+}
+/** Verify FB token and map facebookId → uid for friend discovery. */
+exports.linkFacebookAccount = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const accessToken = typeof req.data?.accessToken === "string" ? req.data.accessToken.trim() : "";
+    if (!accessToken)
+        throw new https_1.HttpsError("invalid-argument", "accessToken required");
+    const me = await facebookGraphMe(accessToken);
+    const facebookId = me.id;
+    // Prevent stealing another account's Facebook mapping
+    const existingIndex = await db.doc(`facebookIndex/${facebookId}`).get();
+    if (existingIndex.exists) {
+        const owner = existingIndex.data().uid;
+        if (owner && owner !== uid) {
+            throw new https_1.HttpsError("already-exists", "This Facebook account is linked to another Level Up Life user.");
+        }
+    }
+    const prevProfile = await db.doc(`publicProfiles/${uid}`).get();
+    const prevFb = prevProfile.exists ? prevProfile.data().facebookId : null;
+    if (prevFb && prevFb !== facebookId) {
+        await db.doc(`facebookIndex/${prevFb}`).delete().catch(() => { });
+    }
+    await db.doc(`facebookIndex/${facebookId}`).set({
+        uid,
+        updatedAt: firestore_1.FieldValue.serverTimestamp(),
+    });
+    await db.doc(`users/${uid}`).set({ facebookId }, { merge: true });
+    await db.doc(`publicProfiles/${uid}`).set({
+        facebookId,
+        updatedAt: nowISO(),
+    }, { merge: true });
+    return { facebookId };
+});
+/** Discover Level Up users who are also Facebook friends (requires user_friends). */
+exports.findFacebookFriends = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const accessToken = typeof req.data?.accessToken === "string" ? req.data.accessToken.trim() : "";
+    if (!accessToken)
+        throw new https_1.HttpsError("invalid-argument", "accessToken required");
+    // Ensure caller is linked
+    await facebookGraphMe(accessToken);
+    const url = `https://graph.facebook.com/v21.0/me/friends?fields=id,name&limit=100&access_token=${encodeURIComponent(accessToken)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) {
+        const msg = data?.error?.message || "Could not load Facebook friends";
+        // Common before App Review approval
+        throw new https_1.HttpsError("failed-precondition", msg);
+    }
+    const friends = Array.isArray(data?.data) ? data.data : [];
+    const matches = [];
+    for (const f of friends) {
+        const fbId = String(f.id);
+        const idx = await db.doc(`facebookIndex/${fbId}`).get();
+        if (!idx.exists)
+            continue;
+        const otherUid = idx.data().uid;
+        if (!otherUid || otherUid === uid)
+            continue;
+        const friendship = await db.doc(`friendships/${friendshipId(uid, otherUid)}`).get();
+        if (friendship.exists && friendship.data().status === "accepted")
+            continue;
+        const profile = await db.doc(`publicProfiles/${otherUid}`).get();
+        const p = profile.exists ? profile.data() : {};
+        matches.push({
+            uid: otherUid,
+            facebookId: fbId,
+            name: p.name || f.name || "Hero",
+            level: p.level ?? 1,
+            title: p.title ?? null,
+        });
+    }
+    return { matches, facebookFriendCount: friends.length };
 });
 //# sourceMappingURL=index.js.map

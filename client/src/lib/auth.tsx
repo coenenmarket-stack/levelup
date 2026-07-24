@@ -16,6 +16,7 @@ import {
   signInWithCredential,
   getRedirectResult,
   GoogleAuthProvider,
+  FacebookAuthProvider,
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -31,7 +32,7 @@ import { Browser } from "@capacitor/browser";
 import { httpsCallable } from "firebase/functions";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, collection, getDocs, writeBatch } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
-import { auth, db, functions, googleProvider } from "./firebase";
+import { auth, db, functions, googleProvider, facebookProvider, appleProvider } from "./firebase";
 import type { Me } from "./types";
 import { SCHEMA_VERSION } from "./gameLogic";
 import {
@@ -41,7 +42,34 @@ import {
   NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX,
   CLAIM_NATIVE_GOOGLE_SESSION,
 } from "./ios";
+import {
+  isFacebookConfigured,
+  NATIVE_FACEBOOK_AUTH_URL,
+  NATIVE_FACEBOOK_AUTH_CALLBACK_PREFIX,
+  CLAIM_NATIVE_FACEBOOK_SESSION,
+} from "./socialConfig";
 
+type AuthProviderKey = "password" | "google" | "apple" | "facebook";
+
+function providerKeyFromUser(user: FirebaseUser): AuthProviderKey {
+  const ids = user.providerData.map((p) => p.providerId);
+  if (ids.includes("facebook.com")) return "facebook";
+  if (ids.includes("apple.com")) return "apple";
+  if (ids.includes("google.com")) return "google";
+  return "password";
+}
+
+async function linkFacebookFromAccessToken(accessToken: string) {
+  try {
+    const fn = httpsCallable<{ accessToken: string }, { facebookId: string }>(
+      functions,
+      "linkFacebookAccount",
+    );
+    await fn({ accessToken });
+  } catch (e) {
+    console.warn("linkFacebookAccount failed", e);
+  }
+}
 // If the user's existing character is from an older schema (pre-6-category model),
 // wipe it so they're forced through the new Life Assessment on next login.
 // Match the 'wipe + re-onboard' choice from the Phase 3 roadmap.
@@ -73,6 +101,10 @@ type AuthCtx = {
   signup: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   googleSignIn: () => Promise<void>;
+  facebookSignIn: () => Promise<void>;
+  appleSignIn: () => Promise<void>;
+  /** Re-auth with Facebook to refresh friends permission / access token. */
+  connectFacebookForFriends: () => Promise<{ accessToken: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>; // legacy — Firebase handles via email link
@@ -92,10 +124,11 @@ const Ctx = createContext<AuthCtx | null>(null);
 type ProfileDoc = {
   email: string;
   displayName?: string;
-  provider: "password" | "google";
+  provider: AuthProviderKey;
   onboarded: boolean;
   notificationsEnabled: boolean;
   showLifeGoal?: boolean;
+  facebookId?: string | null;
   createdAt?: any;
 };
 
@@ -109,17 +142,23 @@ function buildMe(fbUser: FirebaseUser, profile: ProfileDoc): Me {
     onboarded: profile.onboarded,
     notificationsEnabled: profile.notificationsEnabled,
     showLifeGoal: profile.showLifeGoal !== false,
+    facebookId: profile.facebookId ?? null,
     createdAt: typeof profile.createdAt === "string" ? profile.createdAt : new Date().toISOString(),
   };
 }
 
 // Ensure a users/{uid} profile doc exists. Called after every auth event
 // (signup, login, google) so we recover gracefully if the doc was lost.
-async function ensureProfile(fbUser: FirebaseUser, provider: "password" | "google"): Promise<ProfileDoc> {
+async function ensureProfile(fbUser: FirebaseUser, provider: AuthProviderKey): Promise<ProfileDoc> {
   const ref = doc(db, "users", fbUser.uid);
   const snap = await getDoc(ref);
   if (snap.exists()) {
-    return snap.data() as ProfileDoc;
+    const existing = snap.data() as ProfileDoc;
+    if (existing.provider !== provider && provider !== "password") {
+      await updateDoc(ref, { provider }).catch(() => {});
+      return { ...existing, provider };
+    }
+    return existing;
   }
   const initial: ProfileDoc = {
     email: fbUser.email ?? "",
@@ -128,6 +167,7 @@ async function ensureProfile(fbUser: FirebaseUser, provider: "password" | "googl
     onboarded: false,
     notificationsEnabled: true,
     showLifeGoal: true,
+    facebookId: null,
     createdAt: serverTimestamp(),
   };
   await setDoc(ref, initial);
@@ -162,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       new Promise<null>((resolve) => window.setTimeout(() => resolve(null), REDIRECT_MS)),
     ])
       .then(async (result) => {
-        if (result?.user) await ensureProfile(result.user, "google");
+        if (result?.user) await ensureProfile(result.user, providerKeyFromUser(result.user));
       })
       .catch((e) => console.error("getRedirectResult failed", e));
 
@@ -174,10 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         return;
       }
-      // We don't know if this is password or google here; check providerData.
-      const providerId = user.providerData[0]?.providerId ?? "password";
-      const providerKey: "password" | "google" =
-        providerId === "google.com" ? "google" : "password";
+      const providerKey = providerKeyFromUser(user);
       try {
         const p = await ensureProfile(user, providerKey);
         // One-time schema migration: drops legacy character if pre-v3 schema.
@@ -307,6 +344,114 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await ensureProfile(cred.user, "google");
   };
 
+  const facebookSignInNativeBrowser = () =>
+    new Promise<string>((resolve, reject) => {
+      let settled = false;
+      let urlHandle: { remove: () => Promise<void> } | null = null;
+      let browserHandle: { remove: () => Promise<void> } | null = null;
+      let cancelTimer: number | undefined;
+
+      const finish = async (err?: unknown, accessToken?: string) => {
+        if (settled) return;
+        settled = true;
+        if (cancelTimer) window.clearTimeout(cancelTimer);
+        await Promise.allSettled([
+          urlHandle?.remove() ?? Promise.resolve(),
+          browserHandle?.remove() ?? Promise.resolve(),
+        ]);
+        try {
+          await Browser.close();
+        } catch {
+          // already closed
+        }
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve(accessToken || "");
+      };
+
+      void (async () => {
+        try {
+          urlHandle = await CapApp.addListener("appUrlOpen", async ({ url }) => {
+            if (!url.startsWith(NATIVE_FACEBOOK_AUTH_CALLBACK_PREFIX)) return;
+            try {
+              const parsed = new URL(url);
+              const error = parsed.searchParams.get("error");
+              if (error) throw new Error(error);
+              const code = parsed.searchParams.get("code");
+              if (!code) throw new Error("Missing Facebook sign-in code");
+              const claim = httpsCallable(functions, CLAIM_NATIVE_FACEBOOK_SESSION);
+              const result = await claim({ code });
+              const data = result.data as { accessToken?: string };
+              if (!data?.accessToken) throw new Error("Missing Facebook access token");
+              const credential = FacebookAuthProvider.credential(data.accessToken);
+              const cred = await signInWithCredential(auth, credential);
+              await ensureProfile(cred.user, "facebook");
+              await linkFacebookFromAccessToken(data.accessToken);
+              await finish(undefined, data.accessToken);
+            } catch (e) {
+              await finish(e);
+            }
+          });
+          browserHandle = await Browser.addListener("browserFinished", () => {
+            cancelTimer = window.setTimeout(() => {
+              void finish(new Error("Facebook sign-in cancelled"));
+            }, 8000);
+          });
+          await Browser.open({
+            url: NATIVE_FACEBOOK_AUTH_URL,
+            presentationStyle: "fullscreen",
+          });
+        } catch (e) {
+          await finish(e);
+        }
+      })();
+    });
+
+  const facebookSignIn = async () => {
+    if (!isFacebookConfigured()) {
+      throw new Error("Facebook Login isn’t configured yet. Add VITE_FACEBOOK_APP_ID (see FACEBOOK_SETUP.md).");
+    }
+    if (shouldUseNativeGoogleBrowser()) {
+      await facebookSignInNativeBrowser();
+      return;
+    }
+    if (shouldUseGoogleRedirect()) {
+      await signInWithRedirect(auth, facebookProvider);
+      return;
+    }
+    const result = await signInWithPopup(auth, facebookProvider);
+    await ensureProfile(result.user, "facebook");
+    const fbCred = FacebookAuthProvider.credentialFromResult(result);
+    if (fbCred?.accessToken) await linkFacebookFromAccessToken(fbCred.accessToken);
+  };
+
+  const appleSignIn = async () => {
+    // Apple Sign In must be offered alongside other social logins (App Store 4.8).
+    if (shouldUseNativeGoogleBrowser() || shouldUseGoogleRedirect()) {
+      await signInWithRedirect(auth, appleProvider);
+      return;
+    }
+    const result = await signInWithPopup(auth, appleProvider);
+    await ensureProfile(result.user, "apple");
+  };
+
+  /** Popup/re-auth to obtain a fresh Facebook access token for Graph friends. */
+  const connectFacebookForFriends = async (): Promise<{ accessToken: string }> => {
+    if (!isFacebookConfigured()) {
+      throw new Error("Facebook isn’t configured yet.");
+    }
+    if (shouldUseNativeGoogleBrowser()) {
+      const accessToken = await facebookSignInNativeBrowser();
+      if (!accessToken) throw new Error("Missing Facebook access token");
+      return { accessToken };
+    }
+    const result = await signInWithPopup(auth, facebookProvider);
+    await ensureProfile(result.user, providerKeyFromUser(result.user));
+    const fbCred = FacebookAuthProvider.credentialFromResult(result);
+    if (!fbCred?.accessToken) throw new Error("Missing Facebook access token");
+    await linkFacebookFromAccessToken(fbCred.accessToken);
+    return { accessToken: fbCred.accessToken };
+  };
+
   const dropGameCaches = () => {
     qc.removeQueries({ predicate: (q) => {
       const k = q.queryKey[0];
@@ -389,7 +534,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       me, isLoading,
-      signup, login, googleSignIn, logout,
+      signup, login, googleSignIn, facebookSignIn, appleSignIn, connectFacebookForFriends, logout,
       forgotPassword, resetPassword, verifyEmail,
       changePassword, updateSettings, deleteAccount, refresh,
     }}>

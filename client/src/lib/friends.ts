@@ -27,6 +27,7 @@ export type PublicProfile = {
   lifeGoal?: string | null;
   showLifeGoal?: boolean;
   inviteCode?: string | null;
+  facebookId?: string | null;
   updatedAt?: string;
 };
 
@@ -79,6 +80,7 @@ export async function syncPublicProfileLocal(
     lifeGoal: showLifeGoal ? (character.lifeGoal ?? null) : null,
     showLifeGoal,
     inviteCode: opts?.inviteCode ?? prev.inviteCode ?? null,
+    facebookId: prev.facebookId ?? null,
     updatedAt: new Date().toISOString(),
   };
   await setDoc(doc(db, "publicProfiles", uid), payload, { merge: true });
@@ -105,6 +107,14 @@ export async function redeemInviteCode(code: string) {
   return (await fn({ code })).data;
 }
 
+export async function requestFriendByUid(friendUid: string) {
+  const fn = httpsCallable<{ friendUid: string }, { status: string; friendshipId: string }>(
+    functions,
+    "requestFriendByUid",
+  );
+  return (await fn({ friendUid })).data;
+}
+
 export async function respondToFriendRequest(friendshipId: string, action: "accept" | "decline") {
   const fn = httpsCallable<{ friendshipId: string; action: string }, { status: string }>(
     functions,
@@ -129,6 +139,17 @@ export async function cheerActivity(activityId: string) {
 export async function shareGoalToFriends(goal: string) {
   const fn = httpsCallable<{ goal: string }, { id: string }>(functions, "shareGoalToFriends");
   return (await fn({ goal })).data;
+}
+
+export async function findFacebookFriends(accessToken: string) {
+  const fn = httpsCallable<
+    { accessToken: string },
+    {
+      matches: Array<{ uid: string; facebookId: string; name: string; level: number; title?: string | null }>;
+      facebookFriendCount: number;
+    }
+  >(functions, "findFacebookFriends");
+  return (await fn({ accessToken })).data;
 }
 
 export async function postProgressActivity(payload: {

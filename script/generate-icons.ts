@@ -1,13 +1,17 @@
 /**
- * Generates PWA / iOS icon PNGs from the source artwork.
+ * Generates PWA / Capacitor icon PNGs from the source artwork.
  * Run: npm run icons
+ *
+ * Also syncs assets/icon.png + assets/splash.png so `npm run cap:assets`
+ * never regenerates from stale 3D art.
  */
 import sharp from "sharp";
-import { mkdir, access } from "node:fs/promises";
+import { mkdir, access, copyFile } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PUBLIC = path.join(ROOT, "client", "public");
+const ASSETS = path.join(ROOT, "assets");
 const SOURCE = path.join(PUBLIC, "icon-source.png");
 
 type IconSpec = { file: string; size: number; maskable?: boolean };
@@ -23,6 +27,7 @@ const ICONS: IconSpec[] = [
 async function main() {
   await access(SOURCE);
   await mkdir(PUBLIC, { recursive: true });
+  await mkdir(ASSETS, { recursive: true });
 
   for (const { file, size, maskable } of ICONS) {
     const out = path.join(PUBLIC, file);
@@ -48,6 +53,13 @@ async function main() {
         .toFile(out);
     }
     console.log(`wrote ${file} (${size}x${size})`);
+  }
+
+  // Keep Capacitor native sources aligned with the logo-style icon-source.
+  for (const name of ["icon.png", "splash.png"] as const) {
+    const dest = path.join(ASSETS, name);
+    await copyFile(SOURCE, dest);
+    console.log(`wrote assets/${name}`);
   }
 }
 

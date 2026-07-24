@@ -11,6 +11,8 @@ import {
   browserLocalPersistence,
   inMemoryPersistence,
   GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider,
   type Auth,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -53,7 +55,19 @@ function createAuth(firebaseApp: FirebaseApp): Auth {
 export const auth = createAuth(app);
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "us-central1");
+
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
+
+export const facebookProvider = new FacebookAuthProvider();
+facebookProvider.addScope("email");
+facebookProvider.addScope("public_profile");
+// user_friends requires Meta App Review — requested so Find Friends works once approved.
+facebookProvider.addScope("user_friends");
+facebookProvider.setCustomParameters({ display: "popup" });
+
+export const appleProvider = new OAuthProvider("apple.com");
+appleProvider.addScope("email");
+appleProvider.addScope("name");
 
 export default app;

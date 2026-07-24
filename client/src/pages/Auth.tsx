@@ -26,6 +26,14 @@ function AppleIcon({ className }: { className?: string }) {
   );
 }
 
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="#1877F2" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+    </svg>
+  );
+}
+
 function AuthShell({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -50,7 +58,7 @@ type Mode = "login" | "signup" | "forgot" | "reset" | "verify";
 
 export default function AuthPage() {
   const [, navigate] = useLocation();
-  const { login, signup, googleSignIn, forgotPassword, resetPassword, verifyEmail } = useAuth();
+  const { login, signup, googleSignIn, facebookSignIn, appleSignIn, forgotPassword, resetPassword, verifyEmail } = useAuth();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -95,6 +103,30 @@ export default function AuthPage() {
       navigate("/");
     } catch (err: any) {
       toast({ title: "Google sign-in failed", description: parseError(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFacebook = async () => {
+    setSubmitting(true);
+    try {
+      await facebookSignIn();
+      navigate("/");
+    } catch (err: any) {
+      toast({ title: "Facebook sign-in failed", description: parseError(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleApple = async () => {
+    setSubmitting(true);
+    try {
+      await appleSignIn();
+      navigate("/");
+    } catch (err: any) {
+      toast({ title: "Apple sign-in failed", description: parseError(err), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -172,10 +204,10 @@ export default function AuthPage() {
             <GoogleIcon className="w-5 h-5" />
             <span>Continue with Google</span>
           </button>
-          <button disabled className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 font-medium opacity-50 cursor-not-allowed" data-testid="button-apple">
+          <button onClick={handleApple} disabled={submitting} data-testid="button-apple"
+            className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 hover-elevate active-elevate font-medium disabled:opacity-50">
             <AppleIcon className="w-5 h-5" />
             <span>Continue with Apple</span>
-            <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">Soon</span>
           </button>
         </div>
 
@@ -238,10 +270,10 @@ export default function AuthPage() {
             <GoogleIcon className="w-5 h-5" />
             <span>Continue with Google</span>
           </button>
-          <button disabled className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 font-medium opacity-50 cursor-not-allowed">
+          <button onClick={handleApple} disabled={submitting} data-testid="button-apple-signup"
+            className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 hover-elevate active-elevate font-medium disabled:opacity-50">
             <AppleIcon className="w-5 h-5" />
             <span>Continue with Apple</span>
-            <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">Soon</span>
           </button>
         </div>
 

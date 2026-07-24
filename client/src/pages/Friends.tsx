@@ -29,9 +29,12 @@ import {
   loadActivityFeed,
   shareText,
   inviteLinkForCode,
+  findFacebookFriends,
+  requestFriendByUid,
   type PublicProfile,
   type ActivityItem,
 } from "@/lib/friends";
+import { isFacebookConfigured } from "@/lib/socialConfig";
 import { AVATAR_CLASSES } from "@shared/schema";
 import type { Category } from "@/lib/types";
 
@@ -50,7 +53,7 @@ function AvatarBubble({ profile, size = "md" }: { profile: PublicProfile; size?:
 }
 
 export default function FriendsPage() {
-  const { me } = useAuth();
+  const { me, connectFacebookForFriends } = useAuth();
   const { character } = useGame();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -58,6 +61,13 @@ export default function FriendsPage() {
   const [codeInput, setCodeInput] = useState("");
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [goalDraft, setGoalDraft] = useState("");
+  const [fbMatches, setFbMatches] = useState<Array<{
+    uid: string;
+    facebookId: string;
+    name: string;
+    level: number;
+    title?: string | null;
+  }>>([]);
 
   const uid = me?.id ? String(me.id) : "";
 
@@ -177,6 +187,41 @@ export default function FriendsPage() {
     onError: (e: any) => toast({ title: "Couldn't share goal", description: e?.message, variant: "destructive" }),
   });
 
+  const findFbMut = useMutation({
+    mutationFn: async () => {
+      const { accessToken } = await connectFacebookForFriends();
+      return findFacebookFriends(accessToken);
+    },
+    onSuccess: (data) => {
+      setFbMatches(data.matches);
+      toast({
+        title: data.matches.length
+          ? `Found ${data.matches.length} friend${data.matches.length === 1 ? "" : "s"} on Level Up`
+          : "No Facebook friends on Level Up yet",
+        description: data.facebookFriendCount
+          ? `Facebook returned ${data.facebookFriendCount} friend(s) who also use apps you’ve authorized.`
+          : "Invite friends with your code — Facebook only shows friends who already use Level Up (and granted permission).",
+      });
+    },
+    onError: (e: any) => toast({
+      title: "Couldn't find Facebook friends",
+      description: e?.message ?? String(e),
+      variant: "destructive",
+    }),
+  });
+
+  const addFbFriendMut = useMutation({
+    mutationFn: (friendUid: string) => requestFriendByUid(friendUid),
+    onSuccess: (data, friendUid) => {
+      toast({
+        title: data.status === "accepted" ? "You're friends!" : "Request sent",
+      });
+      qc.invalidateQueries({ queryKey: ["friendships", uid] });
+      setFbMatches((prev) => prev.filter((m) => m.uid !== friendUid));
+    },
+    onError: (e: any) => toast({ title: "Couldn't add", description: e?.message, variant: "destructive" }),
+  });
+
   const inviteCode = inviteQuery.data?.inviteCode ?? "";
   const selected = selectedFriend ? profileMap.get(selectedFriend) : null;
 
@@ -271,6 +316,45 @@ export default function FriendsPage() {
             Add
           </button>
         </div>
+      </section>
+
+      {/* Facebook friends */}
+      <section className="surface rounded-2xl p-4 space-y-3" data-testid="section-facebook-friends">
+        <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Facebook</div>
+        <p className="text-xs text-muted-foreground">
+          Find friends who already play Level Up Life. Invite codes still work for everyone else.
+        </p>
+        <button
+          type="button"
+          disabled={!isFacebookConfigured() || findFbMut.isPending}
+          data-testid="button-find-facebook-friends"
+          onClick={() => findFbMut.mutate()}
+          className="w-full py-2.5 rounded-xl bg-[#1877F2] text-white font-semibold hover-elevate disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {findFbMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {isFacebookConfigured() ? "Find Facebook friends" : "Facebook not configured yet"}
+        </button>
+        {fbMatches.length > 0 && (
+          <div className="space-y-2">
+            {fbMatches.map((m) => (
+              <div key={m.uid} className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm truncate">{m.name}</div>
+                  <div className="text-xs text-muted-foreground">Lv {m.level}{m.title ? ` · ${m.title}` : ""}</div>
+                </div>
+                <button
+                  type="button"
+                  disabled={addFbFriendMut.isPending}
+                  onClick={() => addFbFriendMut.mutate(m.uid)}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+                  data-testid={`button-add-fb-${m.uid}`}
+                >
+                  Add
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Share goal */}
@@ -415,7 +499,7 @@ export default function FriendsPage() {
       <p className="text-[11px] text-muted-foreground text-center pb-2">
         Control life-goal visibility in{" "}
         <Link href="/settings" className="underline text-primary">Settings</Link>.
-        Facebook friend-find is planned for a later update.
+        Invite codes stay primary; Facebook finds friends who already use the app.
       </p>
     </div>
   );

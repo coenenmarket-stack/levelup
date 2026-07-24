@@ -47,13 +47,23 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'name', 'photoURL', 'avatar', 'level', 'title', 'currentStreak',
           'legacyScore', 'categoryLevels', 'lifeGoal', 'showLifeGoal',
-          'inviteCode', 'updatedAt'
+          'inviteCode', 'facebookId', 'updatedAt'
         ]);
       allow delete: if isOwner(uid);
     }
 
     // Invite codes — Admin SDK / Cloud Functions only
     match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // Facebook id → uid index — CF only
+    match /facebookIndex/{facebookId} {
+      allow read, write: if false;
+    }
+
+    // Native Facebook OAuth bridge sessions — CF only
+    match /nativeFacebookSessions/{code} {
       allow read, write: if false;
     }
 

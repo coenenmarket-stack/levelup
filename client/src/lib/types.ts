@@ -2,11 +2,12 @@
 export type Me = {
   id: number;
   email: string;
-  provider: "password" | "google" | "apple";
+  provider: "password" | "google" | "apple" | "facebook";
   emailVerified: boolean;
   onboarded: boolean;
   notificationsEnabled: boolean;
   showLifeGoal: boolean;
+  facebookId?: string | null;
   createdAt: string;
 };
 
