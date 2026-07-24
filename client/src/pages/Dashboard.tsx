@@ -16,6 +16,7 @@ import { splitQuestsByCompletion, computeDailyProgress } from "@/lib/questUtils"
 import { getWeakestCategory, getTodaysMission, getTodaysFocus } from "@/lib/dashboardUtils";
 import { TodaysMissionCard } from "@/components/dashboard/TodaysMission";
 import { TodaysFocusCard } from "@/components/dashboard/TodaysFocus";
+import { MoreToDoStrip } from "@/components/dashboard/MoreToDoStrip";
 import { ContinueJourney } from "@/components/dashboard/ContinueJourney";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
@@ -183,6 +184,9 @@ export default function Dashboard() {
           </>
         )}
       </section>
+
+      {/* More to do */}
+      <MoreToDoStrip />
 
       {/* 7. Continue Journey */}
       <ContinueJourney />

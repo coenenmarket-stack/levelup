@@ -344,18 +344,7 @@ export const completeQuest = onCall({ region: "us-central1" }, async (req) => {
   };
   await charRef.collection("completions").add(completionData);
 
-  // XP + level
-  const oldLevel = char.level ?? 1;
-  let xp = (char.xp ?? 0) + quest.xpReward;
-  let level = oldLevel;
-  let leveledUp = false;
-  while (xp >= XP_TO_NEXT_LEVEL(level)) {
-    xp -= XP_TO_NEXT_LEVEL(level);
-    level++;
-    leveledUp = true;
-  }
-
-  // Streak
+  // Streak first (for XP multiplier)
   const last = char.lastCompletionDate;
   let currentStreak = char.currentStreak ?? 0;
   if (last !== today) {
@@ -370,6 +359,22 @@ export const completeQuest = onCall({ region: "us-central1" }, async (req) => {
   }
   const longestStreak = Math.max(char.longestStreak ?? 0, currentStreak);
 
+  const streakMult = 1 + Math.min(0.5, currentStreak * 0.05);
+  const baseXp = Number(quest.xpReward) || 0;
+  const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
+  const streakBonusXp = awardedXp - baseXp;
+
+  // XP + level
+  const oldLevel = char.level ?? 1;
+  let xp = (char.xp ?? 0) + awardedXp;
+  let level = oldLevel;
+  let leveledUp = false;
+  while (xp >= XP_TO_NEXT_LEVEL(level)) {
+    xp -= XP_TO_NEXT_LEVEL(level);
+    level++;
+    leveledUp = true;
+  }
+
   // Stat bumps
   const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
   const statBump = quest.difficulty === "hard" ? 2 : quest.difficulty === "medium" ? 1 : 0;
@@ -377,12 +382,11 @@ export const completeQuest = onCall({ region: "us-central1" }, async (req) => {
     xp,
     level,
     title: titleForLevel(level),
-    totalXp: (char.totalXp ?? 0) + quest.xpReward,
-    spendableXp: (char.spendableXp ?? 0) + quest.xpReward,
+    totalXp: (char.totalXp ?? 0) + awardedXp,
+    spendableXp: (char.spendableXp ?? 0) + awardedXp,
     currentStreak,
     longestStreak,
     lastCompletionDate: today,
-    legacyScore: (char.legacyScore ?? 0) + quest.xpReward,
     hoursInvested: (char.hoursInvested ?? 0) + (quest.difficulty === "hard" ? 60 : quest.difficulty === "medium" ? 30 : 10),
   };
   for (const stat of impactStats) {
@@ -395,7 +399,7 @@ export const completeQuest = onCall({ region: "us-central1" }, async (req) => {
   const catSnap = await catRef.get();
   if (catSnap.exists) {
     const cat: any = catSnap.data();
-    let newXp = (cat.xp ?? 0) + quest.xpReward;
+    let newXp = (cat.xp ?? 0) + awardedXp;
     let newLevel = cat.level ?? 1;
     while (newXp >= XP_TO_NEXT_LEVEL(newLevel)) {
       newXp -= XP_TO_NEXT_LEVEL(newLevel);
@@ -462,7 +466,8 @@ export const completeQuest = onCall({ region: "us-central1" }, async (req) => {
     leveledUp,
     oldLevel,
     newLevel: level,
-    xpEarned: quest.xpReward,
+    xpEarned: awardedXp,
+    streakBonusXp,
     newlyUnlocked,
     xpToNext: XP_TO_NEXT_LEVEL(level),
   };
@@ -606,7 +611,8 @@ export const aiCoach = onCall({ region: "us-central1", secrets: [GEMINI_API_KEY]
 });
 
 // ----------------------------------------------------------------------------
-// generateQuests — Gemini-backed personalized daily quest pack (one per skill)
+// generateQuests — Gemini-backed personalized daily quest pack
+// Weakest-skill bias: 2 quests for lowest skill, 1 each for mid three, 0 for strongest.
 // ----------------------------------------------------------------------------
 
 const GenSchema = z.object({
@@ -627,6 +633,34 @@ function orderQuestsBySkill(quests: any[]): any[] {
   );
 }
 
+/** 2× weakest, 1× next three, 0× strongest — always 5 slots (duplicates allowed). */
+function biasedSkillSlots(catLevels: Record<string, number>, count = 5): SkillKey[] {
+  const sorted = [...SKILL_KEYS].sort(
+    (a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b),
+  );
+  const pattern: SkillKey[] = [sorted[0], sorted[0], sorted[1], sorted[2], sorted[3]];
+  return pattern.slice(0, count);
+}
+
+/** After refresh keeps some completed quests, fill remaining slots with the same bias. */
+function biasedSlotsFilling(
+  catLevels: Record<string, number>,
+  keptCategories: SkillKey[],
+  need: number,
+): SkillKey[] {
+  if (need <= 0) return [];
+  const remaining = biasedSkillSlots(catLevels, 5);
+  for (const k of keptCategories) {
+    const i = remaining.indexOf(k);
+    if (i >= 0) remaining.splice(i, 1);
+  }
+  const sorted = [...SKILL_KEYS].sort(
+    (a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b),
+  );
+  while (remaining.length < need) remaining.push(sorted[0]);
+  return remaining.slice(0, need);
+}
+
 async function getTodayCompletedQuestIds(charRef: DocumentReference): Promise<Set<string>> {
   const today = todayUtc();
   const compSnap = await charRef.collection("completions")
@@ -637,18 +671,40 @@ async function getTodayCompletedQuestIds(charRef: DocumentReference): Promise<Se
 
 type PackItem = { category: SkillKey; title: string; description: string; difficulty: "easy"|"medium"|"hard"; xpReward: number };
 
-// Hard-coded fallback pack so the UI always has something to show, even if
-// Gemini errors. One quest per skill.
+// Hard-coded fallback pack. Categories may repeat (weakest-skill bias).
 function fallbackPack(categories?: SkillKey[]): PackItem[] {
-  const all: PackItem[] = [
-    { category: "health",   title: "30-minute brisk walk",         description: "Move your body and clear your head.",          difficulty: "easy",   xpReward: 15 },
-    { category: "wealth",   title: "Log today's spending",         description: "Track every dollar that left your wallet.",     difficulty: "easy",   xpReward: 15 },
-    { category: "career",   title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 30 },
-    { category: "family",   title: "Call someone you love",        description: "Five minutes can change a day.",                difficulty: "easy",   xpReward: 15 },
-    { category: "mindset",  title: "10 pages of a good book",      description: "Compound your mind.",                            difficulty: "easy",   xpReward: 15 },
-  ];
-  if (!categories?.length) return all;
-  return all.filter(p => categories.includes(p.category));
+  const bySkill: Record<SkillKey, PackItem[]> = {
+    health: [
+      { category: "health", title: "30-minute brisk walk", description: "Move your body and clear your head.", difficulty: "easy", xpReward: 10 },
+      { category: "health", title: "Drink water and stretch", description: "Hydrate and loosen up for 5 minutes.", difficulty: "easy", xpReward: 10 },
+    ],
+    wealth: [
+      { category: "wealth", title: "Log today's spending", description: "Track every dollar that left your wallet.", difficulty: "easy", xpReward: 10 },
+      { category: "wealth", title: "Review one subscription", description: "Cancel or keep — decide consciously.", difficulty: "easy", xpReward: 10 },
+    ],
+    career: [
+      { category: "career", title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 25 },
+      { category: "career", title: "Send one progress update", description: "Make your work visible to someone who matters.", difficulty: "easy", xpReward: 10 },
+    ],
+    family: [
+      { category: "family", title: "Call someone you love", description: "Five minutes can change a day.", difficulty: "easy", xpReward: 10 },
+      { category: "family", title: "Send a thoughtful text", description: "Check in without asking for anything.", difficulty: "easy", xpReward: 10 },
+    ],
+    mindset: [
+      { category: "mindset", title: "10 pages of a good book", description: "Compound your mind.", difficulty: "easy", xpReward: 10 },
+      { category: "mindset", title: "Two minutes of box breathing", description: "Reset your nervous system before the next push.", difficulty: "easy", xpReward: 10 },
+    ],
+  };
+  if (!categories?.length) {
+    return SKILL_KEYS.map((k) => bySkill[k][0]);
+  }
+  const used: Record<string, number> = {};
+  return categories.map((k) => {
+    const idx = used[k] ?? 0;
+    used[k] = idx + 1;
+    const opts = bySkill[k];
+    return { ...opts[Math.min(idx, opts.length - 1)] };
+  });
 }
 
 async function generatePackItems(
@@ -664,10 +720,15 @@ async function generatePackItems(
   try {
     const client = new GoogleGenerativeAI(key);
     const catList = categories.join(", ");
-    const sys = `You generate daily real-life action quests for an RPG-style self-improvement app. Return STRICTLY valid JSON: an array of EXACTLY ${categories.length} objects, one per category: ${catList}.
+    const counts = SKILL_KEYS
+      .map((k) => `${k}×${categories.filter((c) => c === k).length}`)
+      .filter((s) => !s.endsWith("×0"))
+      .join(", ");
+    const sys = `You generate daily real-life action quests for an RPG-style self-improvement app. Return STRICTLY valid JSON: an array of EXACTLY ${categories.length} objects in this category order: [${catList}].
+Duplicate categories are intentional (weakest-skill focus) — give DISTINCT quests when a category repeats (${counts}).
 
 Each object MUST have these keys:
-- category: one of ${categories.map(c => `"${c}"`).join(" | ")}
+- category: must match the slot order above
 - title: short imperative action (max 60 chars), starts with a verb, no emoji
 - description: one short sentence of WHY or HOW (max 90 chars)
 - difficulty: "easy" | "medium" | "hard"
@@ -695,16 +756,33 @@ Quests must be doable today in under 90 minutes, concrete, and personalized.`;
         thinkingConfig: { thinkingBudget: 0 },
       } as any,
     });
-    const result = await model.generateContent(`Generate quests for: ${catList}`);
+    const result = await model.generateContent(`Generate quests for slots: ${catList}`);
     const raw = result.response.text().trim();
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       const cleaned: PackItem[] = [];
-      const seen = new Set<string>();
+      const usedIdx = new Set<number>();
       for (const skill of categories) {
-        const q = parsed.find((p: any) => p?.category === skill);
-        if (!q || seen.has(skill)) continue;
-        seen.add(skill);
+        let q: any = null;
+        let foundAt = -1;
+        for (let i = 0; i < parsed.length; i++) {
+          if (usedIdx.has(i)) continue;
+          if (parsed[i]?.category === skill) {
+            q = parsed[i];
+            foundAt = i;
+            break;
+          }
+        }
+        if (!q) {
+          // Fall back to positional match
+          const i = cleaned.length;
+          if (parsed[i] && !usedIdx.has(i)) {
+            q = parsed[i];
+            foundAt = i;
+          }
+        }
+        if (!q) continue;
+        usedIdx.add(foundAt);
         const difficulty = ["easy", "medium", "hard"].includes(q.difficulty) ? q.difficulty : "easy";
         const xpReward = difficulty === "hard" ? 50 : difficulty === "medium" ? 25 : 10;
         cleaned.push({
@@ -785,7 +863,11 @@ export const generateQuests = onCall({ region: "us-central1", secrets: [GEMINI_A
   }
 
   let keptQuests: any[] = [];
-  let categoriesToGenerate: SkillKey[] = [...SKILL_KEYS];
+  let categoriesToGenerate: SkillKey[] = [];
+
+  const catsSnap = await charRef.collection("categories").get();
+  const catLevels: Record<string, number> = {};
+  catsSnap.forEach(d => { const v = d.data() as any; catLevels[v.key] = v.level ?? 1; });
 
   if (refresh) {
     const cached = await cacheRef.get();
@@ -806,11 +888,9 @@ export const generateQuests = onCall({ region: "us-central1", secrets: [GEMINI_A
       keptQuests = keptDocs.filter(d => d.exists).map(d => ({ id: d.id, ...(d.data() as any) }));
     }
 
-    const keptCategories = new Set(keptQuests.map(q => q.category));
-    categoriesToGenerate = SKILL_KEYS.filter(k => !keptCategories.has(k));
-
-    // Option A: all missions complete — return kept only, no new quests.
-    if (categoriesToGenerate.length === 0) {
+    const need = Math.max(0, 5 - keptQuests.length);
+    // All missions complete — return kept only, no new quests.
+    if (need === 0) {
       await cacheRef.set({
         questIds: keepIds,
         generatedAt: FieldValue.serverTimestamp(),
@@ -819,11 +899,12 @@ export const generateQuests = onCall({ region: "us-central1", secrets: [GEMINI_A
       });
       return { quests: orderQuestsBySkill(keptQuests), cached: false, allComplete: true };
     }
-  }
 
-  const catsSnap = await charRef.collection("categories").get();
-  const catLevels: Record<string, number> = {};
-  catsSnap.forEach(d => { const v = d.data() as any; catLevels[v.key] = v.level ?? 1; });
+    const keptCategories = keptQuests.map(q => q.category as SkillKey);
+    categoriesToGenerate = biasedSlotsFilling(catLevels, keptCategories, need);
+  } else {
+    categoriesToGenerate = biasedSkillSlots(catLevels, 5);
+  }
 
   const packItems = await generatePackItems(char, catLevels, categoriesToGenerate);
   const newQuests = await persistPackQuests(questsCol, packItems, today);
@@ -915,4 +996,289 @@ export const claimNativeGoogleSession = onCall(async (request) => {
   }
   if (!data.idToken) throw new HttpsError("internal", "Session missing token");
   return { idToken: data.idToken, accessToken: data.accessToken || null };
+});
+
+// ----------------------------------------------------------------------------
+// Friends — invite codes, friendships, activity feed
+// ----------------------------------------------------------------------------
+
+const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function friendshipId(a: string, b: string): string {
+  return [a, b].sort().join("_");
+}
+
+function makeInviteCode(len = 6): string {
+  const bytes = randomBytes(len);
+  let out = "";
+  for (let i = 0; i < len; i++) out += INVITE_ALPHABET[bytes[i] % INVITE_ALPHABET.length];
+  return out;
+}
+
+async function listAcceptedFriendUids(uid: string): Promise<string[]> {
+  const snap = await db.collection("friendships")
+    .where("uids", "array-contains", uid)
+    .get();
+  const friends: string[] = [];
+  for (const d of snap.docs) {
+    const data = d.data() as any;
+    if (data.status !== "accepted") continue;
+    const uids: string[] = data.uids ?? [];
+    for (const other of uids) {
+      if (other !== uid) friends.push(other);
+    }
+  }
+  return friends;
+}
+
+async function buildPublicProfilePayload(uid: string, inviteCode?: string | null) {
+  const [charSnap, catsSnap, userSnap, existing] = await Promise.all([
+    db.doc(`characters/${uid}`).get(),
+    db.collection(`characters/${uid}/categories`).get(),
+    db.doc(`users/${uid}`).get(),
+    db.doc(`publicProfiles/${uid}`).get(),
+  ]);
+  if (!charSnap.exists) throw new HttpsError("failed-precondition", "Finish onboarding first.");
+  const char: any = charSnap.data();
+  const user: any = userSnap.exists ? userSnap.data() : {};
+  const showLifeGoal = user.showLifeGoal !== false;
+  const categoryLevels: Record<string, number> = {};
+  catsSnap.forEach((d) => {
+    const v = d.data() as any;
+    if (v.key) categoryLevels[v.key] = v.level ?? 1;
+  });
+  const code = inviteCode
+    ?? (existing.exists ? (existing.data() as any).inviteCode : null)
+    ?? null;
+  return {
+    name: char.name ?? "Hero",
+    photoURL: char.photoURL ?? null,
+    avatar: char.avatar ?? null,
+    level: char.level ?? 1,
+    title: char.title ?? null,
+    currentStreak: char.currentStreak ?? 0,
+    legacyScore: char.legacyScore ?? 0,
+    categoryLevels,
+    lifeGoal: showLifeGoal ? (char.lifeGoal ?? null) : null,
+    showLifeGoal,
+    inviteCode: code,
+    updatedAt: nowISO(),
+  };
+}
+
+export const ensureInviteCode = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const profileRef = db.doc(`publicProfiles/${uid}`);
+  const existing = await profileRef.get();
+  let code: string | null = existing.exists ? ((existing.data() as any).inviteCode || null) : null;
+
+  if (!code) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const candidate = makeInviteCode(6);
+      const inviteRef = db.doc(`inviteCodes/${candidate}`);
+      const taken = await inviteRef.get();
+      if (taken.exists) continue;
+      await inviteRef.set({ uid, createdAt: FieldValue.serverTimestamp() });
+      code = candidate;
+      break;
+    }
+    if (!code) throw new HttpsError("internal", "Could not allocate invite code");
+  }
+
+  const payload = await buildPublicProfilePayload(uid, code);
+  await profileRef.set(payload, { merge: true });
+  return { inviteCode: code, profile: payload };
+});
+
+export const redeemInviteCode = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const raw = typeof req.data?.code === "string" ? req.data.code.trim().toUpperCase() : "";
+  if (!raw || raw.length < 4) throw new HttpsError("invalid-argument", "Enter a valid invite code");
+
+  const inviteSnap = await db.doc(`inviteCodes/${raw}`).get();
+  if (!inviteSnap.exists) throw new HttpsError("not-found", "Invite code not found");
+  const targetUid = (inviteSnap.data() as any).uid as string;
+  if (!targetUid) throw new HttpsError("not-found", "Invite code not found");
+  if (targetUid === uid) throw new HttpsError("invalid-argument", "You can't friend yourself");
+
+  const id = friendshipId(uid, targetUid);
+  const ref = db.doc(`friendships/${id}`);
+  const snap = await ref.get();
+  if (snap.exists) {
+    const data = snap.data() as any;
+    if (data.status === "accepted") return { status: "accepted", friendshipId: id };
+    if (data.status === "pending" && data.requestedBy === targetUid) {
+      await ref.update({
+        status: "accepted",
+        acceptedAt: FieldValue.serverTimestamp(),
+      });
+      return { status: "accepted", friendshipId: id };
+    }
+    if (data.status === "pending") return { status: "pending", friendshipId: id };
+  }
+
+  await ref.set({
+    uids: [uid, targetUid].sort(),
+    status: "pending",
+    requestedBy: uid,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { status: "pending", friendshipId: id };
+});
+
+export const respondToFriendRequest = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const friendshipDocId = typeof req.data?.friendshipId === "string" ? req.data.friendshipId : "";
+  const action = req.data?.action === "decline" ? "decline" : "accept";
+  if (!friendshipDocId) throw new HttpsError("invalid-argument", "friendshipId required");
+
+  const ref = db.doc(`friendships/${friendshipDocId}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Request not found");
+  const data = snap.data() as any;
+  if (!Array.isArray(data.uids) || !data.uids.includes(uid)) {
+    throw new HttpsError("permission-denied", "Not your request");
+  }
+  if (data.status !== "pending") throw new HttpsError("failed-precondition", "Request is not pending");
+  if (data.requestedBy === uid) throw new HttpsError("failed-precondition", "Wait for them to respond");
+
+  if (action === "decline") {
+    await ref.delete();
+    return { status: "declined" };
+  }
+  await ref.update({
+    status: "accepted",
+    acceptedAt: FieldValue.serverTimestamp(),
+  });
+  return { status: "accepted" };
+});
+
+export const removeFriend = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const friendUid = typeof req.data?.friendUid === "string" ? req.data.friendUid : "";
+  if (!friendUid) throw new HttpsError("invalid-argument", "friendUid required");
+  const id = friendshipId(uid, friendUid);
+  const ref = db.doc(`friendships/${id}`);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: true };
+  const data = snap.data() as any;
+  if (!Array.isArray(data.uids) || !data.uids.includes(uid)) {
+    throw new HttpsError("permission-denied", "Not your friendship");
+  }
+  await ref.delete();
+  return { ok: true };
+});
+
+async function writeActivity(params: {
+  actorUid: string;
+  type: "quest" | "levelUp" | "goal" | "cheer";
+  message: string;
+  meta?: Record<string, unknown>;
+  visibleTo: string[];
+  cheerOf?: string | null;
+}) {
+  const visibleTo = Array.from(new Set(params.visibleTo.filter(Boolean)));
+  const ref = await db.collection("activity").add({
+    actorUid: params.actorUid,
+    type: params.type,
+    message: params.message,
+    meta: params.meta ?? {},
+    cheerOf: params.cheerOf ?? null,
+    cheerCount: 0,
+    cheeredBy: [],
+    createdAt: FieldValue.serverTimestamp(),
+    createdAtMs: Date.now(),
+    visibleTo,
+  });
+  return ref.id;
+}
+
+export const postProgressActivity = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const type = req.data?.type === "levelUp" ? "levelUp" : "quest";
+  const category = typeof req.data?.category === "string" ? req.data.category : null;
+  const level = typeof req.data?.level === "number" ? req.data.level : null;
+
+  const friends = await listAcceptedFriendUids(uid);
+  if (friends.length === 0 && type === "quest") {
+    // Still visible to self so the feed isn't empty after first friend joins later — skip spam
+    return { skipped: true };
+  }
+
+  const profile = await db.doc(`publicProfiles/${uid}`).get();
+  const name = profile.exists ? ((profile.data() as any).name || "A friend") : "A friend";
+  const catLabel = category
+    ? category.charAt(0).toUpperCase() + category.slice(1)
+    : "Life";
+
+  const message = type === "levelUp"
+    ? `${name} reached level ${level ?? "?"}`
+    : `${name} completed a ${catLabel} quest`;
+
+  const id = await writeActivity({
+    actorUid: uid,
+    type,
+    message,
+    meta: { category, level },
+    visibleTo: [uid, ...friends],
+  });
+  return { id };
+});
+
+export const shareGoalToFriends = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const goal = typeof req.data?.goal === "string" ? req.data.goal.trim() : "";
+  if (!goal || goal.length > 200) throw new HttpsError("invalid-argument", "Goal required (max 200 chars)");
+
+  const friends = await listAcceptedFriendUids(uid);
+  const profile = await db.doc(`publicProfiles/${uid}`).get();
+  const name = profile.exists ? ((profile.data() as any).name || "A friend") : "A friend";
+  const message = `${name} shared a goal: ${goal}`;
+
+  const id = await writeActivity({
+    actorUid: uid,
+    type: "goal",
+    message,
+    meta: { goal },
+    visibleTo: [uid, ...friends],
+  });
+  return { id };
+});
+
+export const cheerActivity = onCall({ region: "us-central1" }, async (req) => {
+  const uid = requireAuth(req);
+  const activityId = typeof req.data?.activityId === "string" ? req.data.activityId : "";
+  if (!activityId) throw new HttpsError("invalid-argument", "activityId required");
+
+  const ref = db.doc(`activity/${activityId}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Activity not found");
+  const data = snap.data() as any;
+  if (!Array.isArray(data.visibleTo) || !data.visibleTo.includes(uid)) {
+    throw new HttpsError("permission-denied", "Not visible to you");
+  }
+  if (data.actorUid === uid) throw new HttpsError("failed-precondition", "Can't cheer your own update");
+
+  const cheeredBy: string[] = Array.isArray(data.cheeredBy) ? data.cheeredBy : [];
+  if (cheeredBy.includes(uid)) return { cheerCount: data.cheerCount ?? cheeredBy.length, already: true };
+
+  cheeredBy.push(uid);
+  await ref.update({
+    cheeredBy,
+    cheerCount: cheeredBy.length,
+  });
+
+  // Light cheer echo for the original actor
+  const profile = await db.doc(`publicProfiles/${uid}`).get();
+  const name = profile.exists ? ((profile.data() as any).name || "A friend") : "A friend";
+  await writeActivity({
+    actorUid: uid,
+    type: "cheer",
+    message: `${name} cheered you on`,
+    meta: { activityId },
+    visibleTo: [data.actorUid, uid],
+    cheerOf: activityId,
+  });
+
+  return { cheerCount: cheeredBy.length, already: false };
 });

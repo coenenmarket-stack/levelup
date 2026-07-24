@@ -11,6 +11,7 @@ import {
   BookOpen,
   Heart,
   Settings as SettingsIcon,
+  Users,
   ChevronUp,
   X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const menuItems = [
   { href: "/quests", label: "Quests", icon: Swords, testId: "menu-quests" },
   { href: "/coach", label: "AI Coach", icon: Sparkles, testId: "menu-coach" },
   { href: "/profile", label: "Hero / Profile", icon: User, testId: "menu-profile" },
+  { href: "/friends", label: "Friends", icon: Users, testId: "menu-friends" },
   { href: "/achievements", label: "Achievements", icon: Trophy, testId: "menu-achievements" },
   { href: "/stats", label: "Progress", icon: BarChart3, testId: "menu-progress" },
   { href: "/certifications", label: "Certifications", icon: GraduationCap, testId: "menu-certifications" },

@@ -1,10 +1,12 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "./queryClient";
-import type { Character, Quest, CompleteResult, Achievement } from "./types";
+import type { Character, Quest, CompleteResult, Achievement, Category } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import { XPFloats, type XPFloat } from "@/components/XPGainToast";
 import { LevelUpOverlay } from "@/components/LevelUpOverlay";
+import { postProgressActivity, syncPublicProfileLocal } from "./friends";
+import { useAuth } from "./auth";
 
 type DailyPack = { quests: Quest[]; cached?: boolean; fallback?: boolean };
 
@@ -24,6 +26,7 @@ function markQuestCompletedInList(quests: Quest[] | undefined, questId: string |
 export function GameProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { me } = useAuth();
   const [floats, setFloats] = useState<XPFloat[]>([]);
   const [levelUp, setLevelUp] = useState<{ open: boolean; level: number }>({ open: false, level: 0 });
 
@@ -32,14 +35,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const completeMut = useMutation({
     mutationFn: async (questId: string | number) => {
       const res = await apiRequest("POST", `/api/quests/${questId}/complete`);
-      return (await res.json()) as CompleteResult;
+      return (await res.json()) as CompleteResult & { _questCategory?: string };
     },
     onMutate: async (questId) => {
       await qc.cancelQueries({ queryKey: ["/api/quests"] });
       await qc.cancelQueries({ queryKey: ["/api/daily-pack"] });
 
       const previousQuests = qc.getQueryData<Quest[]>(["/api/quests"]);
-      const previousPack = qc.getQueryData<DailyPack>(["/api/daily-pack"]);
+      const previousPack = qc.getQueryData<{ quests: Quest[] }>(["/api/daily-pack"]);
+      const quest =
+        previousQuests?.find((q) => String(q.id) === String(questId))
+        ?? previousPack?.quests?.find((q) => String(q.id) === String(questId));
 
       if (previousQuests) {
         qc.setQueryData(["/api/quests"], markQuestCompletedInList(previousQuests, questId));
@@ -51,12 +57,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      return { previousQuests, previousPack };
+      return { previousQuests, previousPack, questCategory: quest?.category };
     },
-    onSuccess: (result) => {
+    onSuccess: async (result, _questId, context) => {
       const id = Date.now();
       setFloats((s) => [...s, { id, amount: result.xpEarned }]);
       setTimeout(() => setFloats((s) => s.filter((x) => x.id !== id)), 1600);
+
+      if (result.streakBonusXp && result.streakBonusXp > 0) {
+        toast({
+          title: "Streak bonus",
+          description: `+${result.streakBonusXp} XP from your streak`,
+        });
+      }
 
       if (result.leveledUp) {
         setLevelUp({ open: true, level: result.newLevel });
@@ -76,6 +89,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/completions"] });
       qc.invalidateQueries({ queryKey: ["/api/achievements"] });
       qc.invalidateQueries({ queryKey: ["/api/stats"] });
+      qc.invalidateQueries({ queryKey: ["friend-activity"] });
+
+      // Friends activity + public profile (best-effort)
+      const uid = me?.id ? String(me.id) : "";
+      if (uid) {
+        const category = context?.questCategory;
+        void postProgressActivity({ type: "quest", category });
+        if (result.leveledUp) {
+          void postProgressActivity({ type: "levelUp", level: result.newLevel });
+        }
+        try {
+          const cats = qc.getQueryData<Category[]>(["/api/categories"]) ?? [];
+          await syncPublicProfileLocal(uid, result.character, cats, {
+            showLifeGoal: me?.showLifeGoal !== false,
+          });
+        } catch (e) {
+          console.warn("syncPublicProfileLocal failed", e);
+        }
+      }
     },
     onError: (e: any, _questId, context) => {
       if (context?.previousQuests) {
@@ -96,7 +128,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }}>
       {children}
       <XPFloats floats={floats} />
-      <LevelUpOverlay open={levelUp.open} level={levelUp.level} onClose={() => setLevelUp({ open: false, level: 0 })} />
+      <LevelUpOverlay
+        open={levelUp.open}
+        level={levelUp.level}
+        characterName={character?.name}
+        streak={character?.currentStreak}
+        onClose={() => setLevelUp({ open: false, level: 0 })}
+      />
     </Ctx.Provider>
   );
 }

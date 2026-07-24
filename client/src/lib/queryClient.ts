@@ -301,7 +301,15 @@ async function patchCharacter(uid: string, body: any) {
   if (body.lifeGoal) fields.lifeGoal = body.lifeGoal;
   if (body.goals) fields.goalsJson = JSON.stringify(body.goals);
   await updateDoc(doc(db, "characters", uid), fields);
-  return readCharacter(uid);
+  const character = await readCharacter(uid);
+  try {
+    const { syncPublicProfileLocal } = await import("./friends");
+    const categories = await readCategories(uid);
+    await syncPublicProfileLocal(uid, character, categories);
+  } catch (e) {
+    console.warn("public profile sync failed", e);
+  }
+  return character;
 }
 
 async function createQuest(uid: string, body: any) {
@@ -360,8 +368,8 @@ async function callRedeemReward(uid: string, rewardId: string) {
 
 /**
  * Calls the deployed `generateQuests` Cloud Function (Gemini-backed).
- * Returns a personalized daily quest pack — one quest per skill.
- * If `refresh=true`, ignores today's cache and regenerates.
+ * Returns a personalized daily quest pack (weakest-skill bias).
+ * If `refresh=true`, ignores today's cache and regenerates incomplete slots.
  */
 async function callGenerateQuests(uid: string, refresh: boolean) {
   type PackQuest = {
@@ -375,6 +383,37 @@ async function callGenerateQuests(uid: string, refresh: boolean) {
   };
   type Pack = { quests: PackQuest[]; cached?: boolean; fallback?: boolean; allComplete?: boolean };
 
+  const FALLBACK_BY_SKILL: Record<string, PackQuest[]> = {
+    health: [
+      { category: "health", title: "30-minute brisk walk", description: "Move your body and clear your head.", difficulty: "easy", xpReward: 10 },
+      { category: "health", title: "Drink water and stretch", description: "Hydrate and loosen up for 5 minutes.", difficulty: "easy", xpReward: 10 },
+    ],
+    wealth: [
+      { category: "wealth", title: "Log today's spending", description: "Track every dollar that left your wallet.", difficulty: "easy", xpReward: 10 },
+    ],
+    career: [
+      { category: "career", title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 25 },
+    ],
+    family: [
+      { category: "family", title: "Call someone you love", description: "Five minutes can change a day.", difficulty: "easy", xpReward: 10 },
+    ],
+    mindset: [
+      { category: "mindset", title: "10 pages of a good book", description: "Compound your mind.", difficulty: "easy", xpReward: 10 },
+    ],
+  };
+
+  function offlineBiasedPack(): PackQuest[] {
+    // Prefer doubling health as a generic "weakest" when offline with no levels.
+    const slots = ["health", "health", "wealth", "career", "family"];
+    const used: Record<string, number> = {};
+    return slots.map((k) => {
+      const idx = used[k] ?? 0;
+      used[k] = idx + 1;
+      const opts = FALLBACK_BY_SKILL[k] ?? FALLBACK_BY_SKILL.mindset;
+      return { ...opts[Math.min(idx, opts.length - 1)] };
+    });
+  }
+
   let pack: Pack;
   try {
     const { httpsCallable } = await import("firebase/functions");
@@ -385,13 +424,7 @@ async function callGenerateQuests(uid: string, refresh: boolean) {
   } catch (e: any) {
     console.error("generateQuests call failed", e);
     pack = {
-      quests: [
-        { category: "health",  title: "30-minute brisk walk",         description: "Move your body and clear your head.",          difficulty: "easy",   xpReward: 15 },
-        { category: "wealth",  title: "Log today's spending",         description: "Track every dollar that left your wallet.",     difficulty: "easy",   xpReward: 15 },
-        { category: "career",  title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 30 },
-        { category: "family",  title: "Call someone you love",        description: "Five minutes can change a day.",                difficulty: "easy",   xpReward: 15 },
-        { category: "mindset", title: "10 pages of a good book",      description: "Compound your mind.",                            difficulty: "easy",   xpReward: 15 },
-      ],
+      quests: offlineBiasedPack(),
       cached: false,
       fallback: true,
     };

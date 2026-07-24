@@ -8,6 +8,8 @@ rules_version = '2';
 // any field of their own character (including XP/level/streak). A determined
 // user could edit their own progress via the browser console, but that only
 // cheats their own game.
+//
+// Friends use sanitized publicProfiles + CF-mediated friendships/activity.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -36,6 +38,35 @@ service cloud.firestore {
       match /{subcollection}/{docId} {
         allow read, write: if isOwner(uid);
       }
+    }
+
+    // Sanitized profiles readable by any signed-in user (friends UI).
+    match /publicProfiles/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly([
+          'name', 'photoURL', 'avatar', 'level', 'title', 'currentStreak',
+          'legacyScore', 'categoryLevels', 'lifeGoal', 'showLifeGoal',
+          'inviteCode', 'updatedAt'
+        ]);
+      allow delete: if isOwner(uid);
+    }
+
+    // Invite codes — Admin SDK / Cloud Functions only
+    match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+
+    // Friendships — participants can read; writes via Cloud Functions
+    match /friendships/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.uids;
+      allow create, update, delete: if false;
+    }
+
+    // Activity feed — visibleTo array-contains; writes via Cloud Functions
+    match /activity/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.visibleTo;
+      allow create, update, delete: if false;
     }
 
     // Deny everything else

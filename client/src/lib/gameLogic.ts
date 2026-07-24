@@ -424,18 +424,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
     completionDate: today,
   });
 
-  // XP + level
-  const oldLevel = char.level ?? 1;
-  let xp = (char.xp ?? 0) + quest.xpReward;
-  let level = oldLevel;
-  let leveledUp = false;
-  while (xp >= XP_TO_NEXT_LEVEL(level)) {
-    xp -= XP_TO_NEXT_LEVEL(level);
-    level++;
-    leveledUp = true;
-  }
-
-  // Streak
+  // Streak (compute before XP so multiplier can use today's streak)
   const last = char.lastCompletionDate;
   let currentStreak = char.currentStreak ?? 0;
   if (last !== today) {
@@ -450,6 +439,23 @@ export async function completeQuestLocal(uid: string, questId: string) {
   }
   const longestStreak = Math.max(char.longestStreak ?? 0, currentStreak);
 
+  // Streak XP multiplier: +5% per streak day, capped at +50%
+  const streakMult = 1 + Math.min(0.5, currentStreak * 0.05);
+  const baseXp = Number(quest.xpReward) || 0;
+  const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
+  const streakBonusXp = awardedXp - baseXp;
+
+  // XP + level
+  const oldLevel = char.level ?? 1;
+  let xp = (char.xp ?? 0) + awardedXp;
+  let level = oldLevel;
+  let leveledUp = false;
+  while (xp >= XP_TO_NEXT_LEVEL(level)) {
+    xp -= XP_TO_NEXT_LEVEL(level);
+    level++;
+    leveledUp = true;
+  }
+
   // Stat bumps
   const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
   const statBump = quest.difficulty === "hard" ? 2 : quest.difficulty === "medium" ? 1 : 0;
@@ -457,8 +463,8 @@ export async function completeQuestLocal(uid: string, questId: string) {
     xp,
     level,
     title: titleForLevel(level),
-    totalXp: (char.totalXp ?? 0) + quest.xpReward,
-    spendableXp: (char.spendableXp ?? 0) + quest.xpReward,
+    totalXp: (char.totalXp ?? 0) + awardedXp,
+    spendableXp: (char.spendableXp ?? 0) + awardedXp,
     currentStreak,
     longestStreak,
     lastCompletionDate: today,
@@ -474,7 +480,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
   let questCategoryLevel: number | null = null;
   if (catSnap.exists()) {
     const cat: any = catSnap.data();
-    let newXp = (cat.xp ?? 0) + quest.xpReward;
+    let newXp = (cat.xp ?? 0) + awardedXp;
     let newLevel = cat.level ?? 1;
     while (newXp >= XP_TO_NEXT_LEVEL(newLevel)) {
       newXp -= XP_TO_NEXT_LEVEL(newLevel);
@@ -557,7 +563,8 @@ export async function completeQuestLocal(uid: string, questId: string) {
     leveledUp,
     oldLevel,
     newLevel: level,
-    xpEarned: quest.xpReward,
+    xpEarned: awardedXp,
+    streakBonusXp,
     newlyUnlocked,
     xpToNext: XP_TO_NEXT_LEVEL(level),
   };

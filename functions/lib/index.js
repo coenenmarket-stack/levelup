@@ -6,7 +6,7 @@
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
+exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
@@ -317,17 +317,7 @@ exports.completeQuest = (0, https_1.onCall)({ region: "us-central1" }, async (re
         completionDate: today,
     };
     await charRef.collection("completions").add(completionData);
-    // XP + level
-    const oldLevel = char.level ?? 1;
-    let xp = (char.xp ?? 0) + quest.xpReward;
-    let level = oldLevel;
-    let leveledUp = false;
-    while (xp >= XP_TO_NEXT_LEVEL(level)) {
-        xp -= XP_TO_NEXT_LEVEL(level);
-        level++;
-        leveledUp = true;
-    }
-    // Streak
+    // Streak first (for XP multiplier)
     const last = char.lastCompletionDate;
     let currentStreak = char.currentStreak ?? 0;
     if (last !== today) {
@@ -345,6 +335,20 @@ exports.completeQuest = (0, https_1.onCall)({ region: "us-central1" }, async (re
         }
     }
     const longestStreak = Math.max(char.longestStreak ?? 0, currentStreak);
+    const streakMult = 1 + Math.min(0.5, currentStreak * 0.05);
+    const baseXp = Number(quest.xpReward) || 0;
+    const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
+    const streakBonusXp = awardedXp - baseXp;
+    // XP + level
+    const oldLevel = char.level ?? 1;
+    let xp = (char.xp ?? 0) + awardedXp;
+    let level = oldLevel;
+    let leveledUp = false;
+    while (xp >= XP_TO_NEXT_LEVEL(level)) {
+        xp -= XP_TO_NEXT_LEVEL(level);
+        level++;
+        leveledUp = true;
+    }
     // Stat bumps
     const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
     const statBump = quest.difficulty === "hard" ? 2 : quest.difficulty === "medium" ? 1 : 0;
@@ -352,12 +356,11 @@ exports.completeQuest = (0, https_1.onCall)({ region: "us-central1" }, async (re
         xp,
         level,
         title: titleForLevel(level),
-        totalXp: (char.totalXp ?? 0) + quest.xpReward,
-        spendableXp: (char.spendableXp ?? 0) + quest.xpReward,
+        totalXp: (char.totalXp ?? 0) + awardedXp,
+        spendableXp: (char.spendableXp ?? 0) + awardedXp,
         currentStreak,
         longestStreak,
         lastCompletionDate: today,
-        legacyScore: (char.legacyScore ?? 0) + quest.xpReward,
         hoursInvested: (char.hoursInvested ?? 0) + (quest.difficulty === "hard" ? 60 : quest.difficulty === "medium" ? 30 : 10),
     };
     for (const stat of impactStats) {
@@ -369,7 +372,7 @@ exports.completeQuest = (0, https_1.onCall)({ region: "us-central1" }, async (re
     const catSnap = await catRef.get();
     if (catSnap.exists) {
         const cat = catSnap.data();
-        let newXp = (cat.xp ?? 0) + quest.xpReward;
+        let newXp = (cat.xp ?? 0) + awardedXp;
         let newLevel = cat.level ?? 1;
         while (newXp >= XP_TO_NEXT_LEVEL(newLevel)) {
             newXp -= XP_TO_NEXT_LEVEL(newLevel);
@@ -446,7 +449,8 @@ exports.completeQuest = (0, https_1.onCall)({ region: "us-central1" }, async (re
         leveledUp,
         oldLevel,
         newLevel: level,
-        xpEarned: quest.xpReward,
+        xpEarned: awardedXp,
+        streakBonusXp,
         newlyUnlocked,
         xpToNext: XP_TO_NEXT_LEVEL(level),
     };
@@ -576,7 +580,8 @@ exports.aiCoach = (0, https_1.onCall)({ region: "us-central1", secrets: [GEMINI_
     }
 });
 // ----------------------------------------------------------------------------
-// generateQuests — Gemini-backed personalized daily quest pack (one per skill)
+// generateQuests — Gemini-backed personalized daily quest pack
+// Weakest-skill bias: 2 quests for lowest skill, 1 each for mid three, 0 for strongest.
 // ----------------------------------------------------------------------------
 const GenSchema = zod_1.z.object({
     refresh: zod_1.z.boolean().optional(), // when true, ignore today's cache and regen
@@ -589,6 +594,27 @@ function orderQuestsBySkill(quests) {
     const order = new Map(SKILL_KEYS.map((k, i) => [k, i]));
     return [...quests].sort((a, b) => (order.get(a.category) ?? 99) - (order.get(b.category) ?? 99));
 }
+/** 2× weakest, 1× next three, 0× strongest — always 5 slots (duplicates allowed). */
+function biasedSkillSlots(catLevels, count = 5) {
+    const sorted = [...SKILL_KEYS].sort((a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b));
+    const pattern = [sorted[0], sorted[0], sorted[1], sorted[2], sorted[3]];
+    return pattern.slice(0, count);
+}
+/** After refresh keeps some completed quests, fill remaining slots with the same bias. */
+function biasedSlotsFilling(catLevels, keptCategories, need) {
+    if (need <= 0)
+        return [];
+    const remaining = biasedSkillSlots(catLevels, 5);
+    for (const k of keptCategories) {
+        const i = remaining.indexOf(k);
+        if (i >= 0)
+            remaining.splice(i, 1);
+    }
+    const sorted = [...SKILL_KEYS].sort((a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b));
+    while (remaining.length < need)
+        remaining.push(sorted[0]);
+    return remaining.slice(0, need);
+}
 async function getTodayCompletedQuestIds(charRef) {
     const today = todayUtc();
     const compSnap = await charRef.collection("completions")
@@ -596,19 +622,40 @@ async function getTodayCompletedQuestIds(charRef) {
         .get();
     return new Set(compSnap.docs.map(d => String(d.data().questId)));
 }
-// Hard-coded fallback pack so the UI always has something to show, even if
-// Gemini errors. One quest per skill.
+// Hard-coded fallback pack. Categories may repeat (weakest-skill bias).
 function fallbackPack(categories) {
-    const all = [
-        { category: "health", title: "30-minute brisk walk", description: "Move your body and clear your head.", difficulty: "easy", xpReward: 15 },
-        { category: "wealth", title: "Log today's spending", description: "Track every dollar that left your wallet.", difficulty: "easy", xpReward: 15 },
-        { category: "career", title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 30 },
-        { category: "family", title: "Call someone you love", description: "Five minutes can change a day.", difficulty: "easy", xpReward: 15 },
-        { category: "mindset", title: "10 pages of a good book", description: "Compound your mind.", difficulty: "easy", xpReward: 15 },
-    ];
-    if (!categories?.length)
-        return all;
-    return all.filter(p => categories.includes(p.category));
+    const bySkill = {
+        health: [
+            { category: "health", title: "30-minute brisk walk", description: "Move your body and clear your head.", difficulty: "easy", xpReward: 10 },
+            { category: "health", title: "Drink water and stretch", description: "Hydrate and loosen up for 5 minutes.", difficulty: "easy", xpReward: 10 },
+        ],
+        wealth: [
+            { category: "wealth", title: "Log today's spending", description: "Track every dollar that left your wallet.", difficulty: "easy", xpReward: 10 },
+            { category: "wealth", title: "Review one subscription", description: "Cancel or keep — decide consciously.", difficulty: "easy", xpReward: 10 },
+        ],
+        career: [
+            { category: "career", title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 25 },
+            { category: "career", title: "Send one progress update", description: "Make your work visible to someone who matters.", difficulty: "easy", xpReward: 10 },
+        ],
+        family: [
+            { category: "family", title: "Call someone you love", description: "Five minutes can change a day.", difficulty: "easy", xpReward: 10 },
+            { category: "family", title: "Send a thoughtful text", description: "Check in without asking for anything.", difficulty: "easy", xpReward: 10 },
+        ],
+        mindset: [
+            { category: "mindset", title: "10 pages of a good book", description: "Compound your mind.", difficulty: "easy", xpReward: 10 },
+            { category: "mindset", title: "Two minutes of box breathing", description: "Reset your nervous system before the next push.", difficulty: "easy", xpReward: 10 },
+        ],
+    };
+    if (!categories?.length) {
+        return SKILL_KEYS.map((k) => bySkill[k][0]);
+    }
+    const used = {};
+    return categories.map((k) => {
+        const idx = used[k] ?? 0;
+        used[k] = idx + 1;
+        const opts = bySkill[k];
+        return { ...opts[Math.min(idx, opts.length - 1)] };
+    });
 }
 async function generatePackItems(char, catLevels, categories) {
     if (!categories.length)
@@ -620,10 +667,15 @@ async function generatePackItems(char, catLevels, categories) {
     try {
         const client = new generative_ai_1.GoogleGenerativeAI(key);
         const catList = categories.join(", ");
-        const sys = `You generate daily real-life action quests for an RPG-style self-improvement app. Return STRICTLY valid JSON: an array of EXACTLY ${categories.length} objects, one per category: ${catList}.
+        const counts = SKILL_KEYS
+            .map((k) => `${k}×${categories.filter((c) => c === k).length}`)
+            .filter((s) => !s.endsWith("×0"))
+            .join(", ");
+        const sys = `You generate daily real-life action quests for an RPG-style self-improvement app. Return STRICTLY valid JSON: an array of EXACTLY ${categories.length} objects in this category order: [${catList}].
+Duplicate categories are intentional (weakest-skill focus) — give DISTINCT quests when a category repeats (${counts}).
 
 Each object MUST have these keys:
-- category: one of ${categories.map(c => `"${c}"`).join(" | ")}
+- category: must match the slot order above
 - title: short imperative action (max 60 chars), starts with a verb, no emoji
 - description: one short sentence of WHY or HOW (max 90 chars)
 - difficulty: "easy" | "medium" | "hard"
@@ -650,17 +702,35 @@ Quests must be doable today in under 90 minutes, concrete, and personalized.`;
                 thinkingConfig: { thinkingBudget: 0 },
             },
         });
-        const result = await model.generateContent(`Generate quests for: ${catList}`);
+        const result = await model.generateContent(`Generate quests for slots: ${catList}`);
         const raw = result.response.text().trim();
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
             const cleaned = [];
-            const seen = new Set();
+            const usedIdx = new Set();
             for (const skill of categories) {
-                const q = parsed.find((p) => p?.category === skill);
-                if (!q || seen.has(skill))
+                let q = null;
+                let foundAt = -1;
+                for (let i = 0; i < parsed.length; i++) {
+                    if (usedIdx.has(i))
+                        continue;
+                    if (parsed[i]?.category === skill) {
+                        q = parsed[i];
+                        foundAt = i;
+                        break;
+                    }
+                }
+                if (!q) {
+                    // Fall back to positional match
+                    const i = cleaned.length;
+                    if (parsed[i] && !usedIdx.has(i)) {
+                        q = parsed[i];
+                        foundAt = i;
+                    }
+                }
+                if (!q)
                     continue;
-                seen.add(skill);
+                usedIdx.add(foundAt);
                 const difficulty = ["easy", "medium", "hard"].includes(q.difficulty) ? q.difficulty : "easy";
                 const xpReward = difficulty === "hard" ? 50 : difficulty === "medium" ? 25 : 10;
                 cleaned.push({
@@ -734,7 +804,10 @@ exports.generateQuests = (0, https_1.onCall)({ region: "us-central1", secrets: [
         }
     }
     let keptQuests = [];
-    let categoriesToGenerate = [...SKILL_KEYS];
+    let categoriesToGenerate = [];
+    const catsSnap = await charRef.collection("categories").get();
+    const catLevels = {};
+    catsSnap.forEach(d => { const v = d.data(); catLevels[v.key] = v.level ?? 1; });
     if (refresh) {
         const cached = await cacheRef.get();
         const cachedIds = cached.exists ? (cached.data().questIds ?? []) : [];
@@ -752,10 +825,9 @@ exports.generateQuests = (0, https_1.onCall)({ region: "us-central1", secrets: [
             const keptDocs = await Promise.all(keepIds.map(id => questsCol.doc(id).get()));
             keptQuests = keptDocs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
         }
-        const keptCategories = new Set(keptQuests.map(q => q.category));
-        categoriesToGenerate = SKILL_KEYS.filter(k => !keptCategories.has(k));
-        // Option A: all missions complete — return kept only, no new quests.
-        if (categoriesToGenerate.length === 0) {
+        const need = Math.max(0, 5 - keptQuests.length);
+        // All missions complete — return kept only, no new quests.
+        if (need === 0) {
             await cacheRef.set({
                 questIds: keepIds,
                 generatedAt: firestore_1.FieldValue.serverTimestamp(),
@@ -764,10 +836,12 @@ exports.generateQuests = (0, https_1.onCall)({ region: "us-central1", secrets: [
             });
             return { quests: orderQuestsBySkill(keptQuests), cached: false, allComplete: true };
         }
+        const keptCategories = keptQuests.map(q => q.category);
+        categoriesToGenerate = biasedSlotsFilling(catLevels, keptCategories, need);
     }
-    const catsSnap = await charRef.collection("categories").get();
-    const catLevels = {};
-    catsSnap.forEach(d => { const v = d.data(); catLevels[v.key] = v.level ?? 1; });
+    else {
+        categoriesToGenerate = biasedSkillSlots(catLevels, 5);
+    }
     const packItems = await generatePackItems(char, catLevels, categoriesToGenerate);
     const newQuests = await persistPackQuests(questsCol, packItems, today);
     const allQuests = orderQuestsBySkill([...keptQuests, ...newQuests]);
@@ -861,5 +935,275 @@ exports.claimNativeGoogleSession = (0, https_1.onCall)(async (request) => {
     if (!data.idToken)
         throw new https_1.HttpsError("internal", "Session missing token");
     return { idToken: data.idToken, accessToken: data.accessToken || null };
+});
+// ----------------------------------------------------------------------------
+// Friends — invite codes, friendships, activity feed
+// ----------------------------------------------------------------------------
+const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function friendshipId(a, b) {
+    return [a, b].sort().join("_");
+}
+function makeInviteCode(len = 6) {
+    const bytes = (0, node_crypto_1.randomBytes)(len);
+    let out = "";
+    for (let i = 0; i < len; i++)
+        out += INVITE_ALPHABET[bytes[i] % INVITE_ALPHABET.length];
+    return out;
+}
+async function listAcceptedFriendUids(uid) {
+    const snap = await db.collection("friendships")
+        .where("uids", "array-contains", uid)
+        .get();
+    const friends = [];
+    for (const d of snap.docs) {
+        const data = d.data();
+        if (data.status !== "accepted")
+            continue;
+        const uids = data.uids ?? [];
+        for (const other of uids) {
+            if (other !== uid)
+                friends.push(other);
+        }
+    }
+    return friends;
+}
+async function buildPublicProfilePayload(uid, inviteCode) {
+    const [charSnap, catsSnap, userSnap, existing] = await Promise.all([
+        db.doc(`characters/${uid}`).get(),
+        db.collection(`characters/${uid}/categories`).get(),
+        db.doc(`users/${uid}`).get(),
+        db.doc(`publicProfiles/${uid}`).get(),
+    ]);
+    if (!charSnap.exists)
+        throw new https_1.HttpsError("failed-precondition", "Finish onboarding first.");
+    const char = charSnap.data();
+    const user = userSnap.exists ? userSnap.data() : {};
+    const showLifeGoal = user.showLifeGoal !== false;
+    const categoryLevels = {};
+    catsSnap.forEach((d) => {
+        const v = d.data();
+        if (v.key)
+            categoryLevels[v.key] = v.level ?? 1;
+    });
+    const code = inviteCode
+        ?? (existing.exists ? existing.data().inviteCode : null)
+        ?? null;
+    return {
+        name: char.name ?? "Hero",
+        photoURL: char.photoURL ?? null,
+        avatar: char.avatar ?? null,
+        level: char.level ?? 1,
+        title: char.title ?? null,
+        currentStreak: char.currentStreak ?? 0,
+        legacyScore: char.legacyScore ?? 0,
+        categoryLevels,
+        lifeGoal: showLifeGoal ? (char.lifeGoal ?? null) : null,
+        showLifeGoal,
+        inviteCode: code,
+        updatedAt: nowISO(),
+    };
+}
+exports.ensureInviteCode = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const profileRef = db.doc(`publicProfiles/${uid}`);
+    const existing = await profileRef.get();
+    let code = existing.exists ? (existing.data().inviteCode || null) : null;
+    if (!code) {
+        for (let attempt = 0; attempt < 8; attempt++) {
+            const candidate = makeInviteCode(6);
+            const inviteRef = db.doc(`inviteCodes/${candidate}`);
+            const taken = await inviteRef.get();
+            if (taken.exists)
+                continue;
+            await inviteRef.set({ uid, createdAt: firestore_1.FieldValue.serverTimestamp() });
+            code = candidate;
+            break;
+        }
+        if (!code)
+            throw new https_1.HttpsError("internal", "Could not allocate invite code");
+    }
+    const payload = await buildPublicProfilePayload(uid, code);
+    await profileRef.set(payload, { merge: true });
+    return { inviteCode: code, profile: payload };
+});
+exports.redeemInviteCode = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const raw = typeof req.data?.code === "string" ? req.data.code.trim().toUpperCase() : "";
+    if (!raw || raw.length < 4)
+        throw new https_1.HttpsError("invalid-argument", "Enter a valid invite code");
+    const inviteSnap = await db.doc(`inviteCodes/${raw}`).get();
+    if (!inviteSnap.exists)
+        throw new https_1.HttpsError("not-found", "Invite code not found");
+    const targetUid = inviteSnap.data().uid;
+    if (!targetUid)
+        throw new https_1.HttpsError("not-found", "Invite code not found");
+    if (targetUid === uid)
+        throw new https_1.HttpsError("invalid-argument", "You can't friend yourself");
+    const id = friendshipId(uid, targetUid);
+    const ref = db.doc(`friendships/${id}`);
+    const snap = await ref.get();
+    if (snap.exists) {
+        const data = snap.data();
+        if (data.status === "accepted")
+            return { status: "accepted", friendshipId: id };
+        if (data.status === "pending" && data.requestedBy === targetUid) {
+            await ref.update({
+                status: "accepted",
+                acceptedAt: firestore_1.FieldValue.serverTimestamp(),
+            });
+            return { status: "accepted", friendshipId: id };
+        }
+        if (data.status === "pending")
+            return { status: "pending", friendshipId: id };
+    }
+    await ref.set({
+        uids: [uid, targetUid].sort(),
+        status: "pending",
+        requestedBy: uid,
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+    });
+    return { status: "pending", friendshipId: id };
+});
+exports.respondToFriendRequest = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const friendshipDocId = typeof req.data?.friendshipId === "string" ? req.data.friendshipId : "";
+    const action = req.data?.action === "decline" ? "decline" : "accept";
+    if (!friendshipDocId)
+        throw new https_1.HttpsError("invalid-argument", "friendshipId required");
+    const ref = db.doc(`friendships/${friendshipDocId}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        throw new https_1.HttpsError("not-found", "Request not found");
+    const data = snap.data();
+    if (!Array.isArray(data.uids) || !data.uids.includes(uid)) {
+        throw new https_1.HttpsError("permission-denied", "Not your request");
+    }
+    if (data.status !== "pending")
+        throw new https_1.HttpsError("failed-precondition", "Request is not pending");
+    if (data.requestedBy === uid)
+        throw new https_1.HttpsError("failed-precondition", "Wait for them to respond");
+    if (action === "decline") {
+        await ref.delete();
+        return { status: "declined" };
+    }
+    await ref.update({
+        status: "accepted",
+        acceptedAt: firestore_1.FieldValue.serverTimestamp(),
+    });
+    return { status: "accepted" };
+});
+exports.removeFriend = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const friendUid = typeof req.data?.friendUid === "string" ? req.data.friendUid : "";
+    if (!friendUid)
+        throw new https_1.HttpsError("invalid-argument", "friendUid required");
+    const id = friendshipId(uid, friendUid);
+    const ref = db.doc(`friendships/${id}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return { ok: true };
+    const data = snap.data();
+    if (!Array.isArray(data.uids) || !data.uids.includes(uid)) {
+        throw new https_1.HttpsError("permission-denied", "Not your friendship");
+    }
+    await ref.delete();
+    return { ok: true };
+});
+async function writeActivity(params) {
+    const visibleTo = Array.from(new Set(params.visibleTo.filter(Boolean)));
+    const ref = await db.collection("activity").add({
+        actorUid: params.actorUid,
+        type: params.type,
+        message: params.message,
+        meta: params.meta ?? {},
+        cheerOf: params.cheerOf ?? null,
+        cheerCount: 0,
+        cheeredBy: [],
+        createdAt: firestore_1.FieldValue.serverTimestamp(),
+        createdAtMs: Date.now(),
+        visibleTo,
+    });
+    return ref.id;
+}
+exports.postProgressActivity = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const type = req.data?.type === "levelUp" ? "levelUp" : "quest";
+    const category = typeof req.data?.category === "string" ? req.data.category : null;
+    const level = typeof req.data?.level === "number" ? req.data.level : null;
+    const friends = await listAcceptedFriendUids(uid);
+    if (friends.length === 0 && type === "quest") {
+        // Still visible to self so the feed isn't empty after first friend joins later — skip spam
+        return { skipped: true };
+    }
+    const profile = await db.doc(`publicProfiles/${uid}`).get();
+    const name = profile.exists ? (profile.data().name || "A friend") : "A friend";
+    const catLabel = category
+        ? category.charAt(0).toUpperCase() + category.slice(1)
+        : "Life";
+    const message = type === "levelUp"
+        ? `${name} reached level ${level ?? "?"}`
+        : `${name} completed a ${catLabel} quest`;
+    const id = await writeActivity({
+        actorUid: uid,
+        type,
+        message,
+        meta: { category, level },
+        visibleTo: [uid, ...friends],
+    });
+    return { id };
+});
+exports.shareGoalToFriends = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const goal = typeof req.data?.goal === "string" ? req.data.goal.trim() : "";
+    if (!goal || goal.length > 200)
+        throw new https_1.HttpsError("invalid-argument", "Goal required (max 200 chars)");
+    const friends = await listAcceptedFriendUids(uid);
+    const profile = await db.doc(`publicProfiles/${uid}`).get();
+    const name = profile.exists ? (profile.data().name || "A friend") : "A friend";
+    const message = `${name} shared a goal: ${goal}`;
+    const id = await writeActivity({
+        actorUid: uid,
+        type: "goal",
+        message,
+        meta: { goal },
+        visibleTo: [uid, ...friends],
+    });
+    return { id };
+});
+exports.cheerActivity = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
+    const uid = requireAuth(req);
+    const activityId = typeof req.data?.activityId === "string" ? req.data.activityId : "";
+    if (!activityId)
+        throw new https_1.HttpsError("invalid-argument", "activityId required");
+    const ref = db.doc(`activity/${activityId}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        throw new https_1.HttpsError("not-found", "Activity not found");
+    const data = snap.data();
+    if (!Array.isArray(data.visibleTo) || !data.visibleTo.includes(uid)) {
+        throw new https_1.HttpsError("permission-denied", "Not visible to you");
+    }
+    if (data.actorUid === uid)
+        throw new https_1.HttpsError("failed-precondition", "Can't cheer your own update");
+    const cheeredBy = Array.isArray(data.cheeredBy) ? data.cheeredBy : [];
+    if (cheeredBy.includes(uid))
+        return { cheerCount: data.cheerCount ?? cheeredBy.length, already: true };
+    cheeredBy.push(uid);
+    await ref.update({
+        cheeredBy,
+        cheerCount: cheeredBy.length,
+    });
+    // Light cheer echo for the original actor
+    const profile = await db.doc(`publicProfiles/${uid}`).get();
+    const name = profile.exists ? (profile.data().name || "A friend") : "A friend";
+    await writeActivity({
+        actorUid: uid,
+        type: "cheer",
+        message: `${name} cheered you on`,
+        meta: { activityId },
+        visibleTo: [data.actorUid, uid],
+        cheerOf: activityId,
+    });
+    return { cheerCount: cheeredBy.length, already: false };
 });
 //# sourceMappingURL=index.js.map

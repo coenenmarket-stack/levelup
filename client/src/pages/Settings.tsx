@@ -161,6 +161,13 @@ export default function SettingsPage() {
           testId="toggle-notifications"
         />
         <ToggleRow
+          label="Show life goal to friends"
+          sub="Appears on your public friend profile"
+          value={me.showLifeGoal !== false}
+          onChange={(v) => updateSettings({ showLifeGoal: v })}
+          testId="toggle-show-life-goal"
+        />
+        <ToggleRow
           label="Dark mode"
           sub="Recommended for the RPG vibe"
           value={theme === "dark"}

@@ -78,7 +78,11 @@ type AuthCtx = {
   resetPassword: (token: string, password: string) => Promise<void>; // legacy — Firebase handles via email link
   verifyEmail: (token?: string) => Promise<void>; // sends a fresh verification email
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  updateSettings: (fields: { notificationsEnabled?: boolean; displayName?: string }) => Promise<void>;
+  updateSettings: (fields: {
+    notificationsEnabled?: boolean;
+    displayName?: string;
+    showLifeGoal?: boolean;
+  }) => Promise<void>;
   deleteAccount: (currentPassword?: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -91,6 +95,7 @@ type ProfileDoc = {
   provider: "password" | "google";
   onboarded: boolean;
   notificationsEnabled: boolean;
+  showLifeGoal?: boolean;
   createdAt?: any;
 };
 
@@ -103,6 +108,7 @@ function buildMe(fbUser: FirebaseUser, profile: ProfileDoc): Me {
     emailVerified: fbUser.emailVerified,
     onboarded: profile.onboarded,
     notificationsEnabled: profile.notificationsEnabled,
+    showLifeGoal: profile.showLifeGoal !== false,
     createdAt: typeof profile.createdAt === "string" ? profile.createdAt : new Date().toISOString(),
   };
 }
@@ -121,6 +127,7 @@ async function ensureProfile(fbUser: FirebaseUser, provider: "password" | "googl
     provider,
     onboarded: false,
     notificationsEnabled: true,
+    showLifeGoal: true,
     createdAt: serverTimestamp(),
   };
   await setDoc(ref, initial);
@@ -334,9 +341,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await updatePassword(auth.currentUser, newPassword);
   };
 
-  const updateSettings = async (fields: { notificationsEnabled?: boolean; displayName?: string }) => {
+  const updateSettings = async (fields: {
+    notificationsEnabled?: boolean;
+    displayName?: string;
+    showLifeGoal?: boolean;
+  }) => {
     if (!fbUser) throw new Error("Not signed in");
     await updateDoc(doc(db, "users", fbUser.uid), fields);
+    if (fields.showLifeGoal !== undefined) {
+      try {
+        const { syncPublicProfileLocal } = await import("./friends");
+        const { getDocs, collection: fsCollection } = await import("firebase/firestore");
+        const charSnap = await getDoc(doc(db, "characters", fbUser.uid));
+        if (charSnap.exists()) {
+          const catsSnap = await getDocs(fsCollection(db, "characters", fbUser.uid, "categories"));
+          const categories = catsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+          await syncPublicProfileLocal(
+            fbUser.uid,
+            { id: fbUser.uid as any, userId: fbUser.uid as any, ...(charSnap.data() as any) },
+            categories,
+            { showLifeGoal: fields.showLifeGoal },
+          );
+        }
+      } catch (e) {
+        console.warn("public profile sync after showLifeGoal failed", e);
+      }
+    }
   };
 
   const deleteAccount = async (currentPassword?: string) => {

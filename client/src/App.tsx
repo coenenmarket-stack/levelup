@@ -27,6 +27,7 @@ import Support from "./pages/Support";
 import Mindset from "./pages/Mindset";
 import Certifications from "./pages/Certifications";
 import SideHustles from "./pages/SideHustles";
+import Friends from "./pages/Friends";
 import NotFound from "@/pages/not-found";
 
 function FullScreenSpinner() {
@@ -47,6 +48,28 @@ function GatedApp() {
       setLoc("/");
     }
   }, [isLoading, me, loc, setLoc]);
+
+  // Native invite deep links → Friends page
+  useEffect(() => {
+    if (!me?.onboarded) return;
+    let handle: { remove: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const { App: CapApp } = await import("@capacitor/app");
+        const { parseInviteCodeFromUrl, isNativeApp } = await import("./lib/ios");
+        if (!isNativeApp()) return;
+        handle = await CapApp.addListener("appUrlOpen", ({ url }) => {
+          const code = parseInviteCodeFromUrl(url);
+          if (code) setLoc(`/friends?code=${encodeURIComponent(code)}`);
+        });
+      } catch {
+        // web / unavailable
+      }
+    })();
+    return () => {
+      void handle?.remove();
+    };
+  }, [me?.onboarded, setLoc]);
 
   if (isLoading) return <FullScreenSpinner />;
 
@@ -71,6 +94,7 @@ function GatedApp() {
           <Route path="/mindset" component={Mindset} />
           <Route path="/certifications" component={Certifications} />
           <Route path="/side-hustles" component={SideHustles} />
+          <Route path="/friends" component={Friends} />
           <Route component={NotFound} />
         </Switch>
       </AppShell>

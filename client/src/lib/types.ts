@@ -6,6 +6,7 @@ export type Me = {
   emailVerified: boolean;
   onboarded: boolean;
   notificationsEnabled: boolean;
+  showLifeGoal: boolean;
   createdAt: string;
 };
 
@@ -111,6 +112,7 @@ export type CompleteResult = {
   oldLevel: number;
   newLevel: number;
   xpEarned: number;
+  streakBonusXp?: number;
   newlyUnlocked: Achievement[];
   xpToNext: number;
 };
