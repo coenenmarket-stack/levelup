@@ -5,13 +5,17 @@
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
 
-import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError, CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, type DocumentReference, type CollectionReference } from "firebase-admin/firestore";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { CLASS_CERT_HINTS, COACH_PERSONA } from "./coachContext";
+
+const NATIVE_GOOGLE_SCHEME = "com.coenenmarket.leveluplife://google-auth";
+const NATIVE_GOOGLE_SESSION_TTL_MS = 5 * 60 * 1000;
 
 initializeApp();
 const db = getFirestore();
@@ -834,4 +838,75 @@ export const generateQuests = onCall({ region: "us-central1", secrets: [GEMINI_A
   });
 
   return { quests: allQuests, cached: false };
+});
+
+// ----------------------------------------------------------------------------
+// Native Google sign-in bridge (Capacitor / SFSafariViewController)
+// Custom-scheme redirects from JS often never reach the app. An HTTPS 302 to
+// the app scheme is reliable, and a short code avoids oversized JWT URLs.
+// ----------------------------------------------------------------------------
+
+export const createNativeGoogleSession = onRequest({ cors: true }, async (req, res) => {
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "POST required" });
+    return;
+  }
+  const body = typeof req.body === "string"
+    ? (() => { try { return JSON.parse(req.body); } catch { return {}; } })()
+    : (req.body || {});
+  const idToken = typeof body.idToken === "string" ? body.idToken : "";
+  const accessToken = typeof body.accessToken === "string" ? body.accessToken : null;
+  if (!idToken || idToken.length < 20) {
+    res.status(400).json({ error: "idToken required" });
+    return;
+  }
+  const code = randomBytes(24).toString("hex");
+  await db.collection("nativeGoogleSessions").doc(code).set({
+    idToken,
+    accessToken,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAtMs: Date.now() + NATIVE_GOOGLE_SESSION_TTL_MS,
+  });
+  const redirect = `https://us-central1-level-up-life-73702.cloudfunctions.net/completeNativeGoogleAuth?code=${encodeURIComponent(code)}`;
+  res.json({ code, redirect });
+});
+
+export const completeNativeGoogleAuth = onRequest({ cors: true }, async (req, res) => {
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  if (!code) {
+    res.status(400).send("Missing code");
+    return;
+  }
+  const snap = await db.collection("nativeGoogleSessions").doc(code).get();
+  if (!snap.exists) {
+    res.status(404).send("Session expired. Close this window and try again in the app.");
+    return;
+  }
+  const expiresAtMs = Number(snap.data()?.expiresAtMs || 0);
+  if (expiresAtMs && Date.now() > expiresAtMs) {
+    await snap.ref.delete().catch(() => {});
+    res.status(410).send("Session expired. Close this window and try again in the app.");
+    return;
+  }
+  // HTTP 302 to custom scheme — SFSafariViewController hands this to the app.
+  res.redirect(302, `${NATIVE_GOOGLE_SCHEME}?code=${encodeURIComponent(code)}`);
+});
+
+export const claimNativeGoogleSession = onCall(async (request) => {
+  const code = typeof request.data?.code === "string" ? request.data.code.trim() : "";
+  if (!code) throw new HttpsError("invalid-argument", "code required");
+  const ref = db.collection("nativeGoogleSessions").doc(code);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Sign-in session expired. Try again.");
+  const data = snap.data() as { idToken?: string; accessToken?: string | null; expiresAtMs?: number };
+  await ref.delete().catch(() => {});
+  if (data.expiresAtMs && Date.now() > data.expiresAtMs) {
+    throw new HttpsError("deadline-exceeded", "Sign-in session expired. Try again.");
+  }
+  if (!data.idToken) throw new HttpsError("internal", "Session missing token");
+  return { idToken: data.idToken, accessToken: data.accessToken || null };
 });

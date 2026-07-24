@@ -47,3 +47,6 @@ export const NATIVE_GOOGLE_AUTH_URL =
 
 export const NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX =
   "com.coenenmarket.leveluplife://google-auth";
+
+/** Callable that exchanges a short-lived bridge code for Google tokens. */
+export const CLAIM_NATIVE_GOOGLE_SESSION = "claimNativeGoogleSession";

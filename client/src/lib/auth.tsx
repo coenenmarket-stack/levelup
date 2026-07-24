@@ -28,9 +28,10 @@ import {
 } from "firebase/auth";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
+import { httpsCallable } from "firebase/functions";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, collection, getDocs, writeBatch } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
-import { auth, db, googleProvider } from "./firebase";
+import { auth, db, functions, googleProvider } from "./firebase";
 import type { Me } from "./types";
 import { SCHEMA_VERSION } from "./gameLogic";
 import {
@@ -38,6 +39,7 @@ import {
   shouldUseNativeGoogleBrowser,
   NATIVE_GOOGLE_AUTH_URL,
   NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX,
+  CLAIM_NATIVE_GOOGLE_SESSION,
 } from "./ios";
 
 // If the user's existing character is from an older schema (pre-6-category model),
@@ -223,10 +225,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let settled = false;
       let urlHandle: { remove: () => Promise<void> } | null = null;
       let browserHandle: { remove: () => Promise<void> } | null = null;
+      let cancelTimer: number | undefined;
 
       const finish = async (err?: unknown) => {
         if (settled) return;
         settled = true;
+        if (cancelTimer) window.clearTimeout(cancelTimer);
         await Promise.allSettled([
           urlHandle?.remove() ?? Promise.resolve(),
           browserHandle?.remove() ?? Promise.resolve(),
@@ -248,10 +252,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const parsed = new URL(url);
               const error = parsed.searchParams.get("error");
               if (error) throw new Error(error);
-              const idToken = parsed.searchParams.get("idToken");
-              if (!idToken) throw new Error("Missing Google ID token");
-              const accessToken = parsed.searchParams.get("accessToken") || undefined;
-              const credential = GoogleAuthProvider.credential(idToken, accessToken);
+              const code = parsed.searchParams.get("code");
+              if (!code) throw new Error("Missing Google sign-in code");
+              const claim = httpsCallable(functions, CLAIM_NATIVE_GOOGLE_SESSION);
+              const result = await claim({ code });
+              const data = result.data as { idToken?: string; accessToken?: string | null };
+              if (!data?.idToken) throw new Error("Missing Google ID token");
+              const credential = GoogleAuthProvider.credential(
+                data.idToken,
+                data.accessToken || undefined,
+              );
               const cred = await signInWithCredential(auth, credential);
               await ensureProfile(cred.user, "google");
               await finish();
@@ -259,11 +269,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await finish(e);
             }
           });
+          // Don't treat browser dismiss as instant cancel — the 302 deep link
+          // often closes Safari View Controller right as the app resumes.
           browserHandle = await Browser.addListener("browserFinished", () => {
-            // Deep-link return can race browserFinished — give the callback a moment.
-            window.setTimeout(() => {
+            cancelTimer = window.setTimeout(() => {
               void finish(new Error("Google sign-in cancelled"));
-            }, 800);
+            }, 8000);
           });
           await Browser.open({
             url: NATIVE_GOOGLE_AUTH_URL,

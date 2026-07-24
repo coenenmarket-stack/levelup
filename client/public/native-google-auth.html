@@ -19,7 +19,8 @@
     }
     p { color: #c9d1d9; max-width: 22rem; line-height: 1.5; }
     .err { color: #ff7b72; }
-    button {
+    button, a.btn {
+      display: inline-block;
       margin-top: 1rem;
       border: 0;
       border-radius: 10px;
@@ -27,14 +28,18 @@
       font-weight: 700;
       background: #e6edf3;
       color: #0d1117;
+      text-decoration: none;
+      cursor: pointer;
     }
+    a.secondary { display: block; margin-top: 1rem; color: #58a6ff; font-size: 0.95rem; }
   </style>
 </head>
 <body>
   <main>
     <h1>Sign in with Google</h1>
-    <p id="status">Opening Google…</p>
+    <p id="status">Preparing Google sign-in…</p>
     <button id="retry" hidden type="button">Try again</button>
+    <a id="openApp" class="btn" hidden href="#">Open Level Up Life</a>
   </main>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
@@ -42,11 +47,15 @@
       getAuth,
       GoogleAuthProvider,
       signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult,
     } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
-    const CALLBACK = "com.coenenmarket.leveluplife://google-auth";
+    const CREATE_SESSION =
+      "https://us-central1-level-up-life-73702.cloudfunctions.net/createNativeGoogleSession";
     const statusEl = document.getElementById("status");
     const retryBtn = document.getElementById("retry");
+    const openApp = document.getElementById("openApp");
 
     const app = initializeApp({
       apiKey: "AIzaSyBRtjVakNyozHXP_lVKoDuINTumRYOl7i4",
@@ -60,30 +69,59 @@
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
 
-    function sendBack(params) {
-      const qs = new URLSearchParams(params);
-      window.location.href = `${CALLBACK}?${qs.toString()}`;
+    function showError(message) {
+      statusEl.textContent = message;
+      statusEl.classList.add("err");
+      retryBtn.hidden = false;
+      openApp.hidden = true;
+    }
+
+    async function handoff(idToken, accessToken) {
+      statusEl.textContent = "Returning to Level Up Life…";
+      statusEl.classList.remove("err");
+      const res = await fetch(CREATE_SESSION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, accessToken: accessToken || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.redirect) {
+        throw new Error(data.error || "Could not finish Google sign-in");
+      }
+      openApp.href = data.redirect;
+      openApp.hidden = false;
+      openApp.textContent = "Tap to return to the app";
+      // Prefer HTTPS 302 bridge (reliable in SFSafariViewController).
+      window.location.replace(data.redirect);
     }
 
     async function run() {
-      statusEl.textContent = "Continue in the Google window…";
+      statusEl.textContent = "Continue with Google…";
       statusEl.classList.remove("err");
       retryBtn.hidden = true;
+      openApp.hidden = true;
       try {
-        const result = await signInWithPopup(auth, provider);
-        const cred = GoogleAuthProvider.credentialFromResult(result);
-        if (!cred?.idToken) throw new Error("Missing Google ID token");
-        const payload = { idToken: cred.idToken };
-        if (cred.accessToken) payload.accessToken = cred.accessToken;
-        statusEl.textContent = "Returning to Level Up Life…";
-        sendBack(payload);
+        // Complete redirect return if we just came back from Google.
+        const redirected = await getRedirectResult(auth);
+        if (redirected?.user) {
+          const cred = GoogleAuthProvider.credentialFromResult(redirected);
+          if (!cred?.idToken) throw new Error("Missing Google ID token");
+          await handoff(cred.idToken, cred.accessToken || undefined);
+          return;
+        }
+
+        try {
+          const result = await signInWithPopup(auth, provider);
+          const cred = GoogleAuthProvider.credentialFromResult(result);
+          if (!cred?.idToken) throw new Error("Missing Google ID token");
+          await handoff(cred.idToken, cred.accessToken || undefined);
+        } catch (popupErr) {
+          // Popup often blocked in in-app browsers — fall back to redirect.
+          statusEl.textContent = "Redirecting to Google…";
+          await signInWithRedirect(auth, provider);
+        }
       } catch (e) {
-        const message = e?.message || "Google sign-in failed";
-        statusEl.textContent = message;
-        statusEl.classList.add("err");
-        retryBtn.hidden = false;
-        // Also bounce the error back so the app can clear its waiting state.
-        sendBack({ error: message });
+        showError(e?.message || "Google sign-in failed");
       }
     }
 
