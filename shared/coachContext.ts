@@ -4,30 +4,44 @@ export const CLASS_CERT_HINTS: Record<string, string[]> = {
   entrepreneur: [
     "Google Project Management",
     "HubSpot Inbound Marketing",
-    "Google Digital Marketing & E-commerce",
+    "Google Analytics (GA4)",
+    "QuickBooks Online Certification",
   ],
   tradesman: [
     "OSHA 10-Hour Construction",
     "EPA 608 (HVAC)",
+    "CPR / First Aid / AED",
     "Commercial Driver's License (CDL)",
   ],
   professional: [
     "Google Project Management",
-    "CompTIA A+",
     "Google IT Support Professional",
+    "Microsoft Azure Fundamentals (AZ-900)",
+    "Google Analytics (GA4)",
   ],
   student: [
-    "Google UX Design",
-    "Meta Front-End Developer",
+    "Responsive Web Design",
+    "Artificial Intelligence Fundamentals",
     "Google IT Support Professional",
+    "Google Data Analytics Professional",
   ],
   creator: [
-    "Adobe Certified Professional · Photoshop",
+    "Responsive Web Design",
     "Google UX Design",
-    "Google Digital Marketing & E-commerce",
+    "HubSpot Content Marketing",
+    "Google Ads Search Certification",
   ],
-  athlete: ["Bookkeeping Professional", "OSHA 10-Hour Construction"],
-  parent: ["HubSpot Inbound Marketing", "Bookkeeping Professional"],
+  athlete: [
+    "CPR / First Aid / AED",
+    "ServSafe Food Handler",
+    "Bookkeeping Professional",
+  ],
+  parent: [
+    "HubSpot Inbound Marketing",
+    "QuickBooks Online Certification",
+    "Google Analytics (GA4)",
+    "Microsoft Office Specialist · Excel",
+  ],
 };
 
 export const COACH_PERSONA = `You are the AI Coach inside Level Up Life — an RPG-style real-life gamification app.

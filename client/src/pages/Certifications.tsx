@@ -13,7 +13,49 @@ type Cert = {
 };
 
 const CERTS: Cert[] = [
-  // Tech
+  // ── Tech ──────────────────────────────────────────────
+  // Free
+  {
+    id: "freecodecamp-responsive-web",
+    name: "Responsive Web Design",
+    provider: "freeCodeCamp",
+    category: "Tech",
+    cost: "Free",
+    time: "300 hours",
+    payoff: "Portfolio projects · junior web path",
+    url: "https://www.freecodecamp.org/learn/2022/responsive-web-design/",
+  },
+  {
+    id: "freecodecamp-js",
+    name: "JavaScript Algorithms & Data Structures",
+    provider: "freeCodeCamp",
+    category: "Tech",
+    cost: "Free",
+    time: "300 hours",
+    payoff: "Coding interview prep · resume projects",
+    url: "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/",
+  },
+  {
+    id: "ibm-ai-fundamentals",
+    name: "Artificial Intelligence Fundamentals",
+    provider: "IBM SkillsBuild",
+    category: "Tech",
+    cost: "Free",
+    time: "~10 hours",
+    payoff: "AI literacy badge · career pivot signal",
+    url: "https://skillsbuild.org/",
+  },
+  {
+    id: "aws-cloud-essentials-badge",
+    name: "AWS Cloud Essentials",
+    provider: "AWS Skill Builder",
+    category: "Tech",
+    cost: "Free",
+    time: "6-12 hours",
+    payoff: "Cloud basics badge · path to CCP exam",
+    url: "https://skillbuilder.aws/",
+  },
+  // Cheap / entry-level affordable ($)
   {
     id: "google-it-support",
     name: "Google IT Support Professional",
@@ -25,14 +67,24 @@ const CERTS: Cert[] = [
     url: "https://www.coursera.org/professional-certificates/google-it-support",
   },
   {
-    id: "comptia-a-plus",
-    name: "CompTIA A+",
-    provider: "CompTIA",
+    id: "google-cybersecurity",
+    name: "Google Cybersecurity Professional",
+    provider: "Coursera / Google",
     category: "Tech",
-    cost: "$$",
-    time: "2-4 months",
-    payoff: "Help desk · $45-65k",
-    url: "https://www.comptia.org/certifications/a",
+    cost: "$",
+    time: "3-6 months",
+    payoff: "SOC / security analyst entry · $55-80k",
+    url: "https://www.coursera.org/professional-certificates/google-cybersecurity",
+  },
+  {
+    id: "google-data-analytics",
+    name: "Google Data Analytics Professional",
+    provider: "Coursera / Google",
+    category: "Tech",
+    cost: "$",
+    time: "3-6 months",
+    payoff: "Junior analyst · $50-75k",
+    url: "https://www.coursera.org/professional-certificates/google-data-analytics",
   },
   {
     id: "aws-cloud-practitioner",
@@ -45,6 +97,16 @@ const CERTS: Cert[] = [
     url: "https://aws.amazon.com/certification/certified-cloud-practitioner/",
   },
   {
+    id: "azure-fundamentals",
+    name: "Microsoft Azure Fundamentals (AZ-900)",
+    provider: "Microsoft Learn",
+    category: "Tech",
+    cost: "$",
+    time: "2-4 weeks",
+    payoff: "Cloud literacy · enterprise IT path",
+    url: "https://learn.microsoft.com/credentials/certifications/azure-fundamentals/",
+  },
+  {
     id: "meta-front-end",
     name: "Meta Front-End Developer",
     provider: "Coursera / Meta",
@@ -54,8 +116,81 @@ const CERTS: Cert[] = [
     payoff: "Junior dev · $60-85k",
     url: "https://www.coursera.org/professional-certificates/meta-front-end-developer",
   },
+  // Mid ($)
+  {
+    id: "comptia-a-plus",
+    name: "CompTIA A+",
+    provider: "CompTIA",
+    category: "Tech",
+    cost: "$$",
+    time: "2-4 months",
+    payoff: "Help desk · $45-65k",
+    url: "https://www.comptia.org/certifications/a",
+  },
 
-  // Business
+  // ── Business ──────────────────────────────────────────
+  // Free
+  {
+    id: "hubspot-inbound",
+    name: "HubSpot Inbound Marketing",
+    provider: "HubSpot Academy",
+    category: "Business",
+    cost: "Free",
+    time: "1 week",
+    payoff: "Resume booster · marketing basics",
+    url: "https://academy.hubspot.com/courses/inbound-certification",
+  },
+  {
+    id: "hubspot-content-marketing",
+    name: "HubSpot Content Marketing",
+    provider: "HubSpot Academy",
+    category: "Business",
+    cost: "Free",
+    time: "1 week",
+    payoff: "Content roles · freelance writing edge",
+    url: "https://academy.hubspot.com/courses/content-marketing",
+  },
+  {
+    id: "hubspot-inbound-sales",
+    name: "HubSpot Inbound Sales",
+    provider: "HubSpot Academy",
+    category: "Business",
+    cost: "Free",
+    time: "3-5 hours",
+    payoff: "SDR / sales coordinator path",
+    url: "https://academy.hubspot.com/courses/inbound-sales",
+  },
+  {
+    id: "hubspot-email-marketing",
+    name: "HubSpot Email Marketing",
+    provider: "HubSpot Academy",
+    category: "Business",
+    cost: "Free",
+    time: "1 week",
+    payoff: "Email / CRM marketing roles",
+    url: "https://academy.hubspot.com/courses/email-marketing-certification-en",
+  },
+  {
+    id: "google-analytics-ga4",
+    name: "Google Analytics (GA4)",
+    provider: "Google Skillshop",
+    category: "Business",
+    cost: "Free",
+    time: "1-2 weeks",
+    payoff: "Marketing analytics · resume staple",
+    url: "https://skillshop.withgoogle.com/",
+  },
+  {
+    id: "google-ads-search",
+    name: "Google Ads Search Certification",
+    provider: "Google Skillshop",
+    category: "Business",
+    cost: "Free",
+    time: "1-2 weeks",
+    payoff: "PPC / paid media entry",
+    url: "https://skillshop.withgoogle.com/",
+  },
+  // Cheap / entry-level affordable ($)
   {
     id: "google-project-mgmt",
     name: "Google Project Management",
@@ -77,17 +212,27 @@ const CERTS: Cert[] = [
     url: "https://www.coursera.org/professional-certificates/google-digital-marketing-ecommerce",
   },
   {
-    id: "hubspot-inbound",
-    name: "HubSpot Inbound Marketing",
-    provider: "HubSpot Academy",
+    id: "meta-social-media",
+    name: "Meta Social Media Marketing",
+    provider: "Coursera / Meta",
     category: "Business",
-    cost: "Free",
-    time: "1 week",
-    payoff: "Resume booster",
-    url: "https://academy.hubspot.com/courses/inbound-certification",
+    cost: "$",
+    time: "3-5 months",
+    payoff: "Social / community roles · $40-60k",
+    url: "https://www.coursera.org/professional-certificates/facebook-social-media-marketing",
+  },
+  {
+    id: "servsafe-food-handler",
+    name: "ServSafe Food Handler",
+    provider: "National Restaurant Association",
+    category: "Business",
+    cost: "$",
+    time: "2-4 hours",
+    payoff: "Food service · hospitality jobs",
+    url: "https://www.servsafe.com/ServSafe-Food-Handler",
   },
 
-  // Trades
+  // ── Trades ────────────────────────────────────────────
   {
     id: "osha-10",
     name: "OSHA 10-Hour Construction",
@@ -99,16 +244,6 @@ const CERTS: Cert[] = [
     url: "https://www.osha.gov/training/outreach",
   },
   {
-    id: "cdl",
-    name: "Commercial Driver's License (CDL)",
-    provider: "Local DMV / Truck schools",
-    category: "Trades",
-    cost: "$$$",
-    time: "3-7 weeks",
-    payoff: "Trucking · $50-90k",
-    url: "https://www.fmcsa.dot.gov/registration/commercial-drivers-license",
-  },
-  {
     id: "epa-608",
     name: "EPA 608 (HVAC)",
     provider: "EPA",
@@ -118,8 +253,38 @@ const CERTS: Cert[] = [
     payoff: "HVAC apprentice · $40-60k",
     url: "https://www.epa.gov/section608",
   },
+  {
+    id: "cpr-first-aid",
+    name: "CPR / First Aid / AED",
+    provider: "American Red Cross / AHA",
+    category: "Trades",
+    cost: "$",
+    time: "1 day",
+    payoff: "Job-site & caregiver requirement",
+    url: "https://www.redcross.org/take-a-class/cpr",
+  },
+  {
+    id: "cdl",
+    name: "Commercial Driver's License (CDL)",
+    provider: "Local DMV / Truck schools",
+    category: "Trades",
+    cost: "$$$",
+    time: "3-7 weeks",
+    payoff: "Trucking · $50-90k",
+    url: "https://www.fmcsa.dot.gov/registration/commercial-drivers-license",
+  },
 
-  // Finance
+  // ── Finance ───────────────────────────────────────────
+  {
+    id: "quickbooks-online",
+    name: "QuickBooks Online Certification",
+    provider: "Intuit ProAdvisor Academy",
+    category: "Finance",
+    cost: "Free",
+    time: "1-3 weeks",
+    payoff: "Bookkeeping gigs · small-biz ops",
+    url: "https://quickbooks.intuit.com/accountants/training-certification/",
+  },
   {
     id: "bookkeeping-cert",
     name: "Bookkeeping Professional",
@@ -129,6 +294,16 @@ const CERTS: Cert[] = [
     time: "2-4 months",
     payoff: "Bookkeeper · $40-55k",
     url: "https://www.coursera.org/professional-certificates/intuit-bookkeeping",
+  },
+  {
+    id: "microsoft-excel-associate",
+    name: "Microsoft Office Specialist · Excel",
+    provider: "Microsoft / Certiport",
+    category: "Finance",
+    cost: "$",
+    time: "2-6 weeks",
+    payoff: "Office / admin · data entry edge",
+    url: "https://learn.microsoft.com/credentials/certifications/mos-excel-associate-m365-apps/",
   },
   {
     id: "series-65",
@@ -141,17 +316,7 @@ const CERTS: Cert[] = [
     url: "https://www.finra.org/registration-exams-ce/qualification-exams/series65",
   },
 
-  // Creative
-  {
-    id: "adobe-acp-photoshop",
-    name: "Adobe Certified Professional · Photoshop",
-    provider: "Adobe",
-    category: "Creative",
-    cost: "$",
-    time: "1-2 months",
-    payoff: "Design freelance · $25-60/hr",
-    url: "https://learning.adobe.com/certification.html",
-  },
+  // ── Creative ──────────────────────────────────────────
   {
     id: "google-ux-design",
     name: "Google UX Design",
@@ -161,6 +326,16 @@ const CERTS: Cert[] = [
     time: "4-6 months",
     payoff: "Junior UX · $55-80k",
     url: "https://www.coursera.org/professional-certificates/google-ux-design",
+  },
+  {
+    id: "adobe-acp-photoshop",
+    name: "Adobe Certified Professional · Photoshop",
+    provider: "Adobe",
+    category: "Creative",
+    cost: "$",
+    time: "1-2 months",
+    payoff: "Design freelance · $25-60/hr",
+    url: "https://learning.adobe.com/certification.html",
   },
 ];
 
@@ -187,7 +362,7 @@ export default function CertificationsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">Certifications</h1>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          Real credentials that get you hired. Curated, not random.
+          Real credentials that get you hired. Free and affordable paths first — curated, not random.
         </p>
       </div>
 
@@ -254,7 +429,7 @@ export default function CertificationsPage() {
       </div>
 
       <p className="text-[11px] text-center text-muted-foreground px-4 pt-2">
-        Costs and salaries are estimates from public sources and vary by region. Always check the provider before enrolling.
+        Free = no fee to earn the credential. $ ≈ under ~$100 or Coursera Career Cert (~$39–49/mo). Costs and salaries are estimates and vary by region — always check the provider before enrolling.
       </p>
     </div>
   );
