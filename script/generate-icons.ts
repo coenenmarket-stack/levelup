@@ -2,17 +2,18 @@
  * Generates PWA / Capacitor icon PNGs from the source artwork.
  * Run: npm run icons
  *
- * Also syncs assets/icon.png + assets/splash.png so `npm run cap:assets`
- * never regenerates from stale 3D art.
+ * Also syncs opaque assets/icon.png + assets/splash.png so `npm run cap:assets`
+ * never regenerates from stale art or alpha-corner sources.
  */
 import sharp from "sharp";
-import { mkdir, access, copyFile } from "node:fs/promises";
+import { mkdir, access } from "node:fs/promises";
 import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PUBLIC = path.join(ROOT, "client", "public");
 const ASSETS = path.join(ROOT, "assets");
 const SOURCE = path.join(PUBLIC, "icon-source.png");
+const BG = { r: 13, g: 17, b: 23 };
 
 type IconSpec = { file: string; size: number; maskable?: boolean };
 
@@ -24,6 +25,10 @@ const ICONS: IconSpec[] = [
   { file: "icon-maskable-512.png", size: 512, maskable: true },
 ];
 
+async function opaqueFromSource() {
+  return sharp(SOURCE).flatten({ background: BG }).removeAlpha();
+}
+
 async function main() {
   await access(SOURCE);
   await mkdir(PUBLIC, { recursive: true });
@@ -34,20 +39,23 @@ async function main() {
     if (maskable) {
       // Maskable safe zone ~80% — pad icon on solid background.
       const inner = Math.round(size * 0.72);
-      const icon = await sharp(SOURCE).resize(inner, inner, { fit: "contain" }).png().toBuffer();
+      const icon = await (await opaqueFromSource())
+        .resize(inner, inner, { fit: "contain", background: BG })
+        .png()
+        .toBuffer();
       await sharp({
         create: {
           width: size,
           height: size,
-          channels: 4,
-          background: { r: 13, g: 17, b: 23, alpha: 1 },
+          channels: 3,
+          background: BG,
         },
       })
         .composite([{ input: icon, gravity: "center" }])
         .png()
         .toFile(out);
     } else {
-      await sharp(SOURCE)
+      await (await opaqueFromSource())
         .resize(size, size, { fit: "cover" })
         .png()
         .toFile(out);
@@ -55,11 +63,11 @@ async function main() {
     console.log(`wrote ${file} (${size}x${size})`);
   }
 
-  // Keep Capacitor native sources aligned with the logo-style icon-source.
+  // Keep Capacitor native sources opaque + logo-aligned (no alpha corners).
   for (const name of ["icon.png", "splash.png"] as const) {
     const dest = path.join(ASSETS, name);
-    await copyFile(SOURCE, dest);
-    console.log(`wrote assets/${name}`);
+    await (await opaqueFromSource()).png().toFile(dest);
+    console.log(`wrote assets/${name} (opaque)`);
   }
 }
 

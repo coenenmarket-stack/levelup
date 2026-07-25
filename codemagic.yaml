@@ -59,8 +59,29 @@ workflows:
           echo "Synced web assets OK:"
           ls ios/App/App/public | head
 
+      # Must use package.json cap:assets (dark #0d1117 flatten). Default capacitor-assets
+      # flattens alpha onto white and produces white-cornered App Icons on TestFlight.
       - name: Generate iOS icons and splash
-        script: npm run cap:assets
+        script: |
+          set -euo pipefail
+          npx tsx script/render-logo-icon.ts
+          npm run icons
+          npm run cap:assets
+          # Fail the build if App Icon still has transparency or white corner fill.
+          node --input-type=module -e "
+          import sharp from 'sharp';
+          const f = 'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png';
+          const meta = await sharp(f).metadata();
+          if (meta.hasAlpha) { console.error('AppIcon has alpha'); process.exit(1); }
+          const { data, info } = await sharp(f).raw().toBuffer({ resolveWithObject: true });
+          const c = info.channels;
+          const [r, g, b] = [data[0], data[1], data[2]];
+          if (r > 240 && g > 240 && b > 240) {
+            console.error('AppIcon corner is white — iconBackgroundColor not applied', r, g, b);
+            process.exit(1);
+          }
+          console.log('AppIcon OK', info.width + 'x' + info.height, 'corner', r, g, b, 'alpha', meta.hasAlpha);
+          "
 
       - name: Set iOS build number
         script: |

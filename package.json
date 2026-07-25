@@ -11,7 +11,7 @@
     "icons": "tsx script/generate-icons.ts",
     "cap:sync": "npm run build && npx cap sync ios",
     "cap:open": "npx cap open ios",
-    "cap:assets": "npx capacitor-assets generate --ios",
+    "cap:assets": "npx capacitor-assets generate --ios --iconBackgroundColor \"#0d1117\" --splashBackgroundColor \"#0d1117\" --splashBackgroundColorDark \"#0d1117\"",
 
     "functions:build": "npm --prefix functions run build"
   },
