@@ -144,11 +144,20 @@ Build number: Codemagic sets automatically via `agvtool` using `$BUILD_NUMBER`.
 ## Regenerate icons
 
 ```powershell
-# Update client/public/icon-source.png or assets/icon.png, then:
-npm run icons          # PWA web icons
-npm run cap:assets     # Native iOS asset catalog
-npm run cap:sync
+# Canonical pipeline (matches Codemagic ios-testflight):
+npx tsx script/render-logo-icon.ts   # Logo → opaque icon-source.png
+npm run icons                        # PWA + opaque assets/icon.png
+npm run cap:assets                   # Splash (dark #0d1117 flatten)
+npm run icons:ios                    # Complete AppIcon set via sharp (overwrites cap icon)
+npm run icons:verify                 # Fail if alpha / white / non-#0d1117 corners
 ```
+
+**Important:** TestFlight only auto-builds from `main`, `release/*`, and
+`cursor/app-store-launch-assets`. Icon fixes on other branches never reach devices
+until one of those branches builds. After install, delete the app first (iOS caches
+home-screen icons), then install the newest TestFlight build and confirm its build
+number is newer than the previous one (ASC last known: build **11**). In Codemagic,
+confirm the build's git commit includes the icon fix.
 
 ---
 

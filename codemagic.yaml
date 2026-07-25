@@ -31,10 +31,22 @@ workflows:
           include: true
         - pattern: release/*
           include: true
+        # Launch branch: ship icon/ASC fixes to TestFlight before merging to main.
+        - pattern: cursor/app-store-launch-assets
+          include: true
 
     scripts:
       - name: Install Node dependencies
         script: npm ci
+
+      - name: Log commit for icon verification
+        script: |
+          set -euo pipefail
+          echo "CM_COMMIT=${CM_COMMIT:-}"
+          echo "CM_BRANCH=${CM_BRANCH:-}"
+          echo "BUILD_NUMBER=${BUILD_NUMBER:-}"
+          git rev-parse HEAD
+          git log -1 --oneline
 
       - name: Typecheck
         script: npm run check
@@ -59,34 +71,26 @@ workflows:
           echo "Synced web assets OK:"
           ls ios/App/App/public | head
 
-      # Must use package.json cap:assets (dark #0d1117 flatten). Default capacitor-assets
-      # flattens alpha onto white and produces white-cornered App Icons on TestFlight.
+      # AppIcon is written by sharp (script/sync-ios-app-icon.ts), NOT left to
+      # capacitor-assets — that tool's default white flatten caused white TF corners.
+      # Splash still uses cap:assets with explicit #0d1117 backgrounds.
       - name: Generate iOS icons and splash
         script: |
           set -euo pipefail
           npx tsx script/render-logo-icon.ts
           npm run icons
+          # Splash only path still goes through capacitor-assets (with dark BG).
           npm run cap:assets
-          # Fail the build if App Icon still has transparency or white corner fill.
-          node --input-type=module -e "
-          import sharp from 'sharp';
-          const f = 'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png';
-          const meta = await sharp(f).metadata();
-          if (meta.hasAlpha) { console.error('AppIcon has alpha'); process.exit(1); }
-          const { data, info } = await sharp(f).raw().toBuffer({ resolveWithObject: true });
-          const c = info.channels;
-          const [r, g, b] = [data[0], data[1], data[2]];
-          if (r > 240 && g > 240 && b > 240) {
-            console.error('AppIcon corner is white — iconBackgroundColor not applied', r, g, b);
-            process.exit(1);
-          }
-          console.log('AppIcon OK', info.width + 'x' + info.height, 'corner', r, g, b, 'alpha', meta.hasAlpha);
-          "
+          # Always overwrite AppIcon afterward with the complete opaque set.
+          npm run icons:ios
+          npm run icons:verify
+          echo "AppIcon pipeline OK for commit ${CM_COMMIT:-unknown}"
 
       - name: Set iOS build number
         script: |
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
+          echo "CFBundleVersion set to $BUILD_NUMBER (commit ${CM_COMMIT:-unknown})"
 
       # Creates/fetches Level Up Life App Store profile + certificate for this key only.
       - name: Set up code signing
