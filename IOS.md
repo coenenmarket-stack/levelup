@@ -145,9 +145,9 @@ Build number: Codemagic sets automatically via `agvtool` using `$BUILD_NUMBER`.
 
 ```powershell
 # Canonical pipeline (matches Codemagic ios-testflight):
-npx tsx script/render-logo-icon.ts   # Logo → opaque icon-source.png
-npm run icons                        # PWA + opaque assets/icon.png
-npm run cap:assets                   # Splash (dark #0d1117 flatten)
+# Source of truth: assets/icon.png (do not overwrite; replace that file to change the logo)
+npm run icons                        # PWA + assets/splash.png FROM assets/icon.png
+npm run cap:assets                   # Splash imageset (dark #0d1117 flatten)
 npm run icons:ios                    # Complete AppIcon set via sharp (overwrites cap icon)
 npm run icons:verify                 # Fail if alpha / white / non-#0d1117 corners
 ```
@@ -168,7 +168,7 @@ confirm the build's git commit includes the icon fix.
 | `capacitor.config.ts` | Capacitor app config |
 | `codemagic.yaml` | CI/CD workflows |
 | `ios/` | Native Xcode project (commit to git) |
-| `assets/icon.png` | Source for native icon generation |
+| `assets/icon.png` | **Single source of truth** for PWA, splash, and iOS AppIcon |
 | `client/src/lib/ios.ts` | Platform detection |
 | `client/src/main.tsx` | Native splash/status bar init |
 

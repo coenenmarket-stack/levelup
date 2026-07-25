@@ -1,9 +1,9 @@
 /**
- * Writes a complete iOS AppIcon.appiconset from opaque assets/icon.png.
- * Bypasses @capacitor/assets for the home-screen / marketing icon so CI cannot
- * reintroduce white-corner flatten bugs.
+ * Writes a complete iOS AppIcon.appiconset from opaque assets/icon.png
+ * (the single source of truth). Bypasses @capacitor/assets for the home-screen
+ * / marketing icon so CI cannot reintroduce white-corner flatten bugs.
  *
- * Run: npm run icons && npx tsx script/sync-ios-app-icon.ts
+ * Run: npm run icons && npm run icons:ios
  */
 import sharp from "sharp";
 import { mkdir, writeFile } from "node:fs/promises";

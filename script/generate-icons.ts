@@ -1,9 +1,8 @@
 /**
- * Generates PWA / Capacitor icon PNGs from the source artwork.
- * Run: npm run icons
+ * Generates PWA icons + splash from the single source of truth: assets/icon.png.
+ * Never overwrites assets/icon.png.
  *
- * Also syncs opaque assets/icon.png + assets/splash.png so `npm run cap:assets`
- * never regenerates from stale art or alpha-corner sources.
+ * Run: npm run icons
  */
 import sharp from "sharp";
 import { mkdir, access } from "node:fs/promises";
@@ -12,7 +11,8 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PUBLIC = path.join(ROOT, "client", "public");
 const ASSETS = path.join(ROOT, "assets");
-const SOURCE = path.join(PUBLIC, "icon-source.png");
+/** Canonical artwork — do not write back to this path. */
+const SOURCE = path.join(ASSETS, "icon.png");
 const BG = { r: 13, g: 17, b: 23 };
 
 type IconSpec = { file: string; size: number; maskable?: boolean };
@@ -63,12 +63,9 @@ async function main() {
     console.log(`wrote ${file} (${size}x${size})`);
   }
 
-  // Keep Capacitor native sources opaque + logo-aligned (no alpha corners).
-  for (const name of ["icon.png", "splash.png"] as const) {
-    const dest = path.join(ASSETS, name);
-    await (await opaqueFromSource()).png().toFile(dest);
-    console.log(`wrote assets/${name} (opaque)`);
-  }
+  // Splash for capacitor-assets — derived from the same source, never the reverse.
+  await (await opaqueFromSource()).png().toFile(path.join(ASSETS, "splash.png"));
+  console.log("wrote assets/splash.png (opaque, from assets/icon.png)");
 }
 
 main().catch((err) => {

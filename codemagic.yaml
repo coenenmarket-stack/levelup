@@ -71,13 +71,14 @@ workflows:
           echo "Synced web assets OK:"
           ls ios/App/App/public | head
 
+      # Single source of truth: assets/icon.png (never regenerated from SVG).
       # AppIcon is written by sharp (script/sync-ios-app-icon.ts), NOT left to
       # capacitor-assets — that tool's default white flatten caused white TF corners.
       # Splash still uses cap:assets with explicit #0d1117 backgrounds.
       - name: Generate iOS icons and splash
         script: |
           set -euo pipefail
-          npx tsx script/render-logo-icon.ts
+          test -f assets/icon.png
           npm run icons
           # Splash only path still goes through capacitor-assets (with dark BG).
           npm run cap:assets
