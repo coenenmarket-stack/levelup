@@ -1,9 +1,18 @@
 # Codemagic builds iOS from Capacitor — configure signing in the Codemagic UI first.
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-capacitor-app/
+#
+# IMPORTANT — pick the RIGHT workflow + branch:
+#   ✅ ios-testflight-launch  → branch cursor/app-store-launch-assets
+#      Display: "… NEW ICON + Google auth …"
+#   ❌ ios-testflight-main    → branch main (OLD icon / broken Google in WKWebView)
+#      Display: "OLD / main — do NOT use for icon or Google auth"
 
 workflows:
-  ios-testflight:
-    name: Level Up Life — iOS TestFlight
+  # -------------------------------------------------------------------------
+  # USE THIS for TestFlight until launch assets are merged to main.
+  # -------------------------------------------------------------------------
+  ios-testflight-launch:
+    name: "Level Up Life – iOS TestFlight (NEW ICON + Google auth / app-store-launch)"
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -11,7 +20,6 @@ workflows:
       app_store_connect: codemagic
 
     environment:
-      # App-specific group: CERTIFICATE_PRIVATE_KEY for Level Up Life only
       groups:
         - levelup-signing
       node: 22
@@ -20,31 +28,163 @@ workflows:
         BUNDLE_ID: com.coenenmarket.leveluplife
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
-        # Match App Store Connect integration name in Codemagic → Teams → Integrations
         APP_STORE_CONNECT_PUBLISHER: codemagic
 
     triggering:
       events:
         - push
       branch_patterns:
+        - pattern: cursor/app-store-launch-assets
+          include: true
+        # Explicitly exclude main so this workflow never builds the wrong branch.
+        - pattern: main
+          include: false
+
+    scripts:
+      - name: Install Node dependencies
+        script: npm ci
+
+      - name: Log branch/commit for icon + auth verification
+        script: |
+          set -euo pipefail
+          echo "=============================================="
+          echo "WORKFLOW=ios-testflight-launch (NEW ICON)"
+          echo "CM_COMMIT=${CM_COMMIT:-}"
+          echo "CM_BRANCH=${CM_BRANCH:-}"
+          echo "BUILD_NUMBER=${BUILD_NUMBER:-}"
+          echo "=============================================="
+          git rev-parse HEAD
+          git log -1 --oneline
+          case "${CM_BRANCH:-}" in
+            cursor/app-store-launch-assets) echo "Branch OK" ;;
+            *)
+              echo "ERROR: This workflow must run on cursor/app-store-launch-assets"
+              echo "Got CM_BRANCH=${CM_BRANCH:-empty}"
+              exit 1
+              ;;
+          esac
+
+      - name: Typecheck
+        script: npm run check
+
+      - name: Build web bundle
+        script: npm run build
+
+      - name: Sync Capacitor iOS
+        script: npx cap sync ios
+
+      - name: Verify web assets synced into iOS
+        script: |
+          set -euo pipefail
+          test -f ios/App/App/public/index.html
+          test -f ios/App/App/capacitor.config.json
+          if ! ls ios/App/App/public/assets/*.js >/dev/null 2>&1; then
+            echo "Missing bundled JS under ios/App/App/public/assets"
+            ls -la ios/App/App/public || true
+            exit 1
+          fi
+          echo "Synced web assets OK:"
+          ls ios/App/App/public | head
+
+      # Single source of truth: assets/icon.png (never regenerated from SVG).
+      # AppIcon is written by sharp (script/sync-ios-app-icon.ts), NOT left to
+      # capacitor-assets — that tool's default white flatten caused white TF corners.
+      - name: Generate iOS icons and splash
+        script: |
+          set -euo pipefail
+          test -f assets/icon.png
+          npm run icons
+          npm run cap:assets
+          npm run icons:ios
+          npm run icons:verify
+          echo "AppIcon pipeline OK for commit ${CM_COMMIT:-unknown}"
+
+      - name: Set iOS build number
+        script: |
+          cd ios/App
+          agvtool new-version -all "$BUILD_NUMBER"
+          agvtool new-marketing-version 1.0.1
+          echo "CFBundleVersion=$BUILD_NUMBER MARKETING_VERSION=1.0.1 (commit ${CM_COMMIT:-unknown})"
+
+      - name: Set up code signing
+        script: |
+          set -euo pipefail
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "Missing CERTIFICATE_PRIVATE_KEY."
+            echo "Add it in Codemagic → levelup → Environment variables:"
+            echo "  name: CERTIFICATE_PRIVATE_KEY"
+            echo "  group: levelup-signing"
+            echo "  secret: yes"
+            exit 1
+          fi
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
+          keychain add-certificates
+          xcode-project use-profiles \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --archive-method app-store
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+
+  # -------------------------------------------------------------------------
+  # OLD — do not use for icon / Google auth TestFlight until main is merged.
+  # Kept for emergency main-branch builds only. Name is intentionally scary.
+  # -------------------------------------------------------------------------
+  ios-testflight-main:
+    name: "OLD / main — do NOT use for icon or Google auth"
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: codemagic
+
+    environment:
+      groups:
+        - levelup-signing
+      node: 22
+      xcode: latest
+      vars:
+        BUNDLE_ID: com.coenenmarket.leveluplife
+        XCODE_PROJECT: ios/App/App.xcodeproj
+        XCODE_SCHEME: App
+        APP_STORE_CONNECT_PUBLISHER: codemagic
+
+    # No automatic push trigger — start manually only if you really mean main.
+    triggering:
+      events: []
+      branch_patterns:
         - pattern: main
           include: true
         - pattern: release/*
-          include: true
-        # Launch branch: ship icon/ASC fixes to TestFlight before merging to main.
-        - pattern: cursor/app-store-launch-assets
           include: true
 
     scripts:
       - name: Install Node dependencies
         script: npm ci
 
-      - name: Log commit for icon verification
+      - name: Warn that this is the OLD main workflow
         script: |
           set -euo pipefail
-          echo "CM_COMMIT=${CM_COMMIT:-}"
-          echo "CM_BRANCH=${CM_BRANCH:-}"
-          echo "BUILD_NUMBER=${BUILD_NUMBER:-}"
+          echo "WARNING: ios-testflight-main — OLD icon / no Safari Google bridge"
+          echo "CM_COMMIT=${CM_COMMIT:-} CM_BRANCH=${CM_BRANCH:-} BUILD_NUMBER=${BUILD_NUMBER:-}"
           git rev-parse HEAD
           git log -1 --oneline
 
@@ -62,30 +202,20 @@ workflows:
           set -euo pipefail
           test -f ios/App/App/public/index.html
           test -f ios/App/App/capacitor.config.json
-          # Fail the build if the web bundle did not sync (blank WKWebView forever).
           if ! ls ios/App/App/public/assets/*.js >/dev/null 2>&1; then
             echo "Missing bundled JS under ios/App/App/public/assets"
             ls -la ios/App/App/public || true
             exit 1
           fi
-          echo "Synced web assets OK:"
-          ls ios/App/App/public | head
 
-      # Single source of truth: assets/icon.png (never regenerated from SVG).
-      # AppIcon is written by sharp (script/sync-ios-app-icon.ts), NOT left to
-      # capacitor-assets — that tool's default white flatten caused white TF corners.
-      # Splash still uses cap:assets with explicit #0d1117 backgrounds.
       - name: Generate iOS icons and splash
         script: |
           set -euo pipefail
           test -f assets/icon.png
           npm run icons
-          # Splash only path still goes through capacitor-assets (with dark BG).
           npm run cap:assets
-          # Always overwrite AppIcon afterward with the complete opaque set.
           npm run icons:ios
-          npm run icons:verify
-          echo "AppIcon pipeline OK for commit ${CM_COMMIT:-unknown}"
+          npm run icons:verify || echo "icons:verify failed (expected on old main without full AppIcon set)"
 
       - name: Set iOS build number
         script: |
@@ -93,16 +223,11 @@ workflows:
           agvtool new-version -all "$BUILD_NUMBER"
           echo "CFBundleVersion set to $BUILD_NUMBER (commit ${CM_COMMIT:-unknown})"
 
-      # Creates/fetches Level Up Life App Store profile + certificate for this key only.
       - name: Set up code signing
         script: |
           set -euo pipefail
           if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
             echo "Missing CERTIFICATE_PRIVATE_KEY."
-            echo "Add it in Codemagic → levelup → Environment variables:"
-            echo "  name: CERTIFICATE_PRIVATE_KEY"
-            echo "  group: levelup-signing"
-            echo "  secret: yes"
             exit 1
           fi
           keychain initialize

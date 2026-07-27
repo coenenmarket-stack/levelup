@@ -267,17 +267,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const googleSignInNativeBrowser = () =>
     new Promise<void>((resolve, reject) => {
       let settled = false;
+      let claiming = false;
       let urlHandle: { remove: () => Promise<void> } | null = null;
       let browserHandle: { remove: () => Promise<void> } | null = null;
+      let appStateHandle: { remove: () => Promise<void> } | null = null;
       let cancelTimer: number | undefined;
+
+      const clearCancelTimer = () => {
+        if (cancelTimer) {
+          window.clearTimeout(cancelTimer);
+          cancelTimer = undefined;
+        }
+      };
+
+      // SFSafariViewController often stays open until the user taps "Open app".
+      // Give them several minutes; never cancel while a claim is in flight.
+      const armCancelTimer = (ms = 180_000) => {
+        clearCancelTimer();
+        cancelTimer = window.setTimeout(() => {
+          if (claiming) {
+            armCancelTimer(60_000);
+            return;
+          }
+          void finish(new Error("Google sign-in cancelled"));
+        }, ms);
+      };
 
       const finish = async (err?: unknown) => {
         if (settled) return;
         settled = true;
-        if (cancelTimer) window.clearTimeout(cancelTimer);
+        clearCancelTimer();
         await Promise.allSettled([
           urlHandle?.remove() ?? Promise.resolve(),
           browserHandle?.remove() ?? Promise.resolve(),
+          appStateHandle?.remove() ?? Promise.resolve(),
         ]);
         try {
           await Browser.close();
@@ -292,6 +315,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           urlHandle = await CapApp.addListener("appUrlOpen", async ({ url }) => {
             if (!url.startsWith(NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX)) return;
+            claiming = true;
+            clearCancelTimer();
             try {
               const parsed = new URL(url);
               const error = parsed.searchParams.get("error");
@@ -311,14 +336,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await finish();
             } catch (e) {
               await finish(e);
+            } finally {
+              claiming = false;
             }
           });
-          // Don't treat browser dismiss as instant cancel — the 302 deep link
-          // often closes Safari View Controller right as the app resumes.
+          // Returning to the app (without a deep link yet) is normal while the
+          // user is still on the hosted "Tap to return" page — re-arm, don't fail.
+          appStateHandle = await CapApp.addListener("appStateChange", ({ isActive }) => {
+            if (isActive && !settled && !claiming) armCancelTimer(180_000);
+          });
           browserHandle = await Browser.addListener("browserFinished", () => {
-            cancelTimer = window.setTimeout(() => {
-              void finish(new Error("Google sign-in cancelled"));
-            }, 8000);
+            // Browser may close after a successful deep link OR if the user
+            // dismissed early. Wait a long grace period for appUrlOpen.
+            armCancelTimer(180_000);
           });
           await Browser.open({
             url: NATIVE_GOOGLE_AUTH_URL,

@@ -40,11 +40,10 @@
       }
       var deep = "com.coenenmarket.leveluplife://google-auth?code=" + encodeURIComponent(code);
       open.href = deep;
-      // Custom-scheme navigation works more reliably from a user gesture / plain page.
-      window.location.replace(deep);
-      setTimeout(function () {
-        statusEl.textContent = "If the app didn’t open, tap the button below.";
-      }, 700);
+      statusEl.textContent = "Google sign-in worked. Tap the button below to return to Level Up Life.";
+      // Do NOT auto-navigate to the custom scheme. SFSafariViewController often
+      // dismisses on location.replace(custom-scheme) without delivering appUrlOpen.
+      // A user-gesture tap is the reliable handoff.
     })();
   </script>
 </body>

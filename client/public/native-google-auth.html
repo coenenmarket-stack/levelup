@@ -86,13 +86,16 @@
       if (!res.ok || !(data.deepLink || data.redirect)) {
         throw new Error(data.error || "Could not finish Google sign-in");
       }
-      // Prefer the custom-scheme deep link for the tappable button (most reliable).
+      // Prefer HTTPS finish page (stays in SFSafariViewController) with a
+      // user-tappable deep link. Auto custom-scheme redirects often dismiss
+      // Safari View Controller without delivering appUrlOpen to the app.
       const deepLink = data.deepLink || ("com.coenenmarket.leveluplife://google-auth?code=" + encodeURIComponent(data.code));
-      const finishPage = data.redirect || deepLink;
+      const finishPage = data.redirect
+        || ("https://level-up-life-73702.web.app/native-auth-finish.html?code=" + encodeURIComponent(data.code));
       openApp.href = deepLink;
       openApp.hidden = false;
       openApp.textContent = "Tap to return to the app";
-      // Hosting finish page attempts the deep link; keep this window usable if it fails.
+      statusEl.textContent = "Almost done — opening return page…";
       window.location.replace(finishPage);
     }
 
