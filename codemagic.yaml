@@ -125,13 +125,46 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --archive-method app-store
+            --archive-method app-store \
+            --custom-export-options='{"testFlightInternalTestingOnly": true}'
 
       - name: Build IPA
         script: |
           xcode-project build-ipa \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
+
+      - name: Verify IPA contains synced web bundle
+        script: |
+          set -euo pipefail
+          IPA=$(ls -1 "$CM_BUILD_DIR"/build/ios/ipa/*.ipa 2>/dev/null | head -1)
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No IPA under build/ios/ipa/"
+            exit 1
+          fi
+          ls -lh "$IPA"
+          BYTES=$(wc -c < "$IPA" | tr -d ' ')
+          echo "IPA_BYTES=$BYTES"
+          if [ "$BYTES" -lt 2000000 ]; then
+            echo "ERROR: IPA smaller than 2 MB — likely missing web assets or export failed"
+            exit 1
+          fi
+          TMP=$(mktemp -d)
+          unzip -q "$IPA" -d "$TMP"
+          APP=$(find "$TMP/Payload" -maxdepth 1 -type d -name '*.app' | head -1)
+          if [ -z "$APP" ]; then
+            echo "ERROR: No .app inside IPA Payload"
+            exit 1
+          fi
+          du -sh "$APP"
+          test -f "$APP/public/index.html"
+          test -f "$APP/capacitor.config.json"
+          if ! ls "$APP/public/assets"/*.js >/dev/null 2>&1; then
+            echo "ERROR: Missing bundled JS in IPA public/assets"
+            ls -la "$APP/public" || true
+            exit 1
+          fi
+          echo "IPA verification OK ($(ls "$APP/public/assets"/*.js | wc -l | tr -d ' ') JS bundles)"
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -140,9 +173,11 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+        # Upload to TestFlight only. Internal ASC users install without beta review.
+        # Do NOT set submit_to_testflight or beta_groups here — post-processing
+        # submits to external beta review and assigns external groups; our
+        # "Internal Testers" group is App Store Connect Users (internal testing),
+        # which Codemagic cannot auto-assign and often fails post-process.
 
   # -------------------------------------------------------------------------
   # OLD — do not use for icon / Google auth TestFlight until main is merged.
@@ -238,7 +273,8 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --archive-method app-store
+            --archive-method app-store \
+            --custom-export-options='{"testFlightInternalTestingOnly": true}'
 
       - name: Build IPA
         script: |
@@ -253,9 +289,7 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+        # Upload only — see ios-testflight-launch publishing notes.
 
   ios-simulator:
     name: Level Up Life — iOS Simulator (CI smoke)
