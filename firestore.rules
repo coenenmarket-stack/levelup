@@ -67,6 +67,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Native Google OAuth bridge sessions — CF only
+    match /nativeGoogleSessions/{code} {
+      allow read, write: if false;
+    }
+
     // Friendships — participants can read; writes via Cloud Functions
     match /friendships/{id} {
       allow read: if isSignedIn() && request.auth.uid in resource.data.uids;

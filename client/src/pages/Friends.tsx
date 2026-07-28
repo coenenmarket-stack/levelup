@@ -318,44 +318,45 @@ export default function FriendsPage() {
         </div>
       </section>
 
-      {/* Facebook friends */}
-      <section className="surface rounded-2xl p-4 space-y-3" data-testid="section-facebook-friends">
-        <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Facebook</div>
-        <p className="text-xs text-muted-foreground">
-          Find friends who already play Level Up Life. Invite codes still work for everyone else.
-        </p>
-        <button
-          type="button"
-          disabled={!isFacebookConfigured() || findFbMut.isPending}
-          data-testid="button-find-facebook-friends"
-          onClick={() => findFbMut.mutate()}
-          className="w-full py-2.5 rounded-xl bg-[#1877F2] text-white font-semibold hover-elevate disabled:opacity-60 flex items-center justify-center gap-2"
-        >
-          {findFbMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {isFacebookConfigured() ? "Find Facebook friends" : "Facebook not configured yet"}
-        </button>
-        {fbMatches.length > 0 && (
-          <div className="space-y-2">
-            {fbMatches.map((m) => (
-              <div key={m.uid} className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate">{m.name}</div>
-                  <div className="text-xs text-muted-foreground">Lv {m.level}{m.title ? ` · ${m.title}` : ""}</div>
+      {isFacebookConfigured() && (
+        <section className="surface rounded-2xl p-4 space-y-3" data-testid="section-facebook-friends">
+          <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Facebook</div>
+          <p className="text-xs text-muted-foreground">
+            Find friends who already play Level Up Life. Invite codes still work for everyone else.
+          </p>
+          <button
+            type="button"
+            disabled={findFbMut.isPending}
+            data-testid="button-find-facebook-friends"
+            onClick={() => findFbMut.mutate()}
+            className="w-full py-2.5 rounded-xl bg-[#1877F2] text-white font-semibold hover-elevate disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {findFbMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Find Facebook friends
+          </button>
+          {fbMatches.length > 0 && (
+            <div className="space-y-2">
+              {fbMatches.map((m) => (
+                <div key={m.uid} className="flex items-center gap-3 rounded-xl bg-secondary/40 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{m.name}</div>
+                    <div className="text-xs text-muted-foreground">Lv {m.level}{m.title ? ` · ${m.title}` : ""}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={addFbFriendMut.isPending}
+                    onClick={() => addFbFriendMut.mutate(m.uid)}
+                    className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+                    data-testid={`button-add-fb-${m.uid}`}
+                  >
+                    Add
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  disabled={addFbFriendMut.isPending}
-                  onClick={() => addFbFriendMut.mutate(m.uid)}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
-                  data-testid={`button-add-fb-${m.uid}`}
-                >
-                  Add
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Share goal */}
       <section className="surface rounded-2xl p-4 space-y-3" data-testid="section-share-goal">
