@@ -1,0 +1,76 @@
+[
+  {
+    "at": "2026-07-28T00:44:35.208Z",
+    "msg": "version",
+    "extra": {
+      "id": "58b99e5a-35e0-4151-a1b7-a6aafd364a84",
+      "state": "PREPARE_FOR_SUBMISSION",
+      "versionString": "1.0.1"
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:35.209Z",
+    "msg": "localization check",
+    "extra": {
+      "description": true,
+      "keywords": true,
+      "whatsNew": false,
+      "supportUrl": "https://level-up-life-73702.web.app/support.html",
+      "marketingUrl": "https://level-up-life-73702.web.app"
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:35.210Z",
+    "msg": "attached build",
+    "extra": {
+      "id": "cd303c4d-640e-4818-a948-c40d58022a6c",
+      "buildNumber": "2",
+      "encryption": false,
+      "processingState": "VALID"
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:35.210Z",
+    "msg": "export compliance",
+    "extra": {
+      "status": "already_set",
+      "usesNonExemptEncryption": false
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:35.815Z",
+    "msg": "created reviewSubmission",
+    "extra": {
+      "id": "c76ca73d-9769-4293-8ae0-5d4a5db83e18",
+      "state": "READY_FOR_REVIEW"
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:38.607Z",
+    "msg": "create reviewSubmissionItem",
+    "extra": {
+      "status": 409,
+      "errors": [
+        {
+          "status": "409",
+          "code": "STATE_ERROR.ENTITY_STATE_INVALID",
+          "title": "appStoreVersions with id '58b99e5a-35e0-4151-a1b7-a6aafd364a84' is not in valid state.",
+          "detail": "This resource cannot be reviewed, please check associated errors to see why."
+        }
+      ]
+    }
+  },
+  {
+    "at": "2026-07-28T00:44:38.608Z",
+    "msg": "BLOCKER",
+    "extra": "Could not link appStoreVersion to reviewSubmission"
+  },
+  {
+    "at": "2026-07-28T00:44:38.608Z",
+    "msg": "MANUAL",
+    "extra": {
+      "tip": "Open ASC version page and complete App Privacy / missing required fields, then retry",
+      "url": "https://appstoreconnect.apple.com/apps/6792917459/distribution/ios/version/inflight"
+    }
+  }
+]
