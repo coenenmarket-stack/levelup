@@ -16,5 +16,7 @@
     "03-progress.png",
     "04-coach.png",
     "05-certs.png"
-  ]
+  ],
+  "screenshotSource": "live-app-capture",
+  "screenshotNote": "Captured from production web app (same Capacitor UI). Real onboarding, quests, coach reply, certs list — no synthetic marketing frames."
 }

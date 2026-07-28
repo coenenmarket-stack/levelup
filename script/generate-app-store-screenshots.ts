@@ -1,6 +1,10 @@
 /**
+ * WARNING: DO NOT use this script for App Store Connect screenshots.
+ * It creates fake/synthetic marketing frames (not real app UI).
+ * Use live CDP captures + `node script/process-live-screenshots.mjs` instead.
+ *
  * Generates App Store Connect marketing screenshots.
- * iPhone 6.7" (1290Ã—2796) + 6.5" (1242Ã—2688).
+ * iPhone 6.7" (1290×2796) + 6.5" (1242×2688).
  * Run: npx tsx script/generate-app-store-screenshots.ts
  */
 import fs from "node:fs";
