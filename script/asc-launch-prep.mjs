@@ -40,7 +40,7 @@ Start free. Complete one quest. Level up your life.`,
   whatsNew:
     "App Store launch build: sharper daily missions, AI coach, certifications, and stability fixes.",
   reviewNotes:
-    "Level Up Life is a free gamified life-quests app. Reviewers can create a new account with email/password on the sign-in screen (no demo account required). Google Sign-In and Sign in with Apple open the system flow and return to the app. Core flow: sign up → life assessment onboarding → daily quests → earn XP → open AI Coach or Certifications. Screenshots are live captures of the running app: Dashboard, Quests, Progress, Coach, and Certs.",
+    "Level Up Life is a free gamified life-quests app. Reviewers can create a new account with email/password on the sign-in screen (no demo account required). Google Sign-In and Sign in with Apple open the system flow and return to the app. Core flow: sign up → life assessment onboarding → daily quests → earn XP → open AI Coach or Certifications. Screenshots are marketing frames over live production UI crops (Home, Quests, Hero, Coach, Certs) — not synthetic/fake UI.",
 };
 
 const FORCE_LISTING_COPY = process.env.FORCE_LISTING_COPY === "1" || process.env.FORCE_LISTING_COPY === "true";
@@ -393,7 +393,7 @@ async function main() {
       if (fs.existsSync(path.join(dir65, "01-hero.png"))) {
         await ensureScreenshotSet("APP_IPHONE_65", dir65, "6.5");
       } else {
-        push("6.5 screenshots skipped — capture live shots then run script/process-live-screenshots.mjs first");
+        push("6.5 screenshots skipped — run script/compose-app-store-flyers.mjs first");
       }
     } catch (e) {
       push("6.5 screenshots failed", { status: e.status, body: e.body });

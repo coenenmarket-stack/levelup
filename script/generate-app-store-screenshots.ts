@@ -1,11 +1,14 @@
 /**
  * WARNING: DO NOT use this script for App Store Connect screenshots.
- * It creates fake/synthetic marketing frames (not real app UI).
- * Use live CDP captures + `node script/process-live-screenshots.mjs` instead.
+ * It creates fake/synthetic marketing frames with invented quests, XP, and UI chrome.
  *
- * Generates App Store Connect marketing screenshots.
- * iPhone 6.7" (1290×2796) + 6.5" (1242×2688).
- * Run: npx tsx script/generate-app-store-screenshots.ts
+ * Approved ASC path (marketing flyers over LIVE UI crops):
+ *   node script/compose-app-store-flyers.mjs
+ *
+ * Raw live decode only (no flyer framing):
+ *   node script/process-live-screenshots.mjs
+ *
+ * This file is retained only as a historical / design reference. Do not run it for ASC.
  */
 import fs from "node:fs";
 import path from "node:path";

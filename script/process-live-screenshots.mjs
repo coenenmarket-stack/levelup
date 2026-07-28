@@ -1,6 +1,12 @@
 /**
- * Decode CDP viewport captures + temp screenshots into ASC-sized PNGs.
+ * Decode CDP viewport captures into ASC-sized PNGs (raw full-bleed UI).
  * Prefer CDP captures (true phone viewport) when listed.
+ *
+ * For App Store Connect, prefer marketing flyers over live crops:
+ *   node script/compose-app-store-flyers.mjs
+ *
+ * Note: older CDP captures may be vertically tiled; the flyers script
+ * auto-crops the first clean UI region before framing.
  */
 import fs from "node:fs";
 import path from "node:path";
