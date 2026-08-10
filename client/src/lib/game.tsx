@@ -110,6 +110,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
           console.warn("syncPublicProfileLocal failed", e);
         }
       }
+
+      // Cancel stale streak-risk notification once today's streak is protected.
+      try {
+        const { syncNotificationsForUser } = await import("./notifications");
+        const pack = qc.getQueryData<{ quests?: Array<{ completedToday?: boolean }> }>(["/api/daily-pack"]);
+        const incompleteDaily = (pack?.quests ?? []).some((q) => !q.completedToday);
+        await syncNotificationsForUser({
+          prefs: {
+            notificationsEnabled: !!me?.notificationsEnabled,
+            notifyDailyQuests: me?.notifyDailyQuests !== false,
+            notifyStreakRisk: me?.notifyStreakRisk !== false,
+            notifyWeeklyChallenges: me?.notifyWeeklyChallenges !== false,
+          },
+          currentStreak: result.character?.currentStreak,
+          longestStreak: result.character?.longestStreak,
+          lastCompletionDate: result.character?.lastCompletionDate ?? null,
+          hasIncompleteDaily: incompleteDaily,
+        });
+      } catch (e) {
+        console.warn("notification resync after quest failed", e);
+      }
     },
     onError: (e: any, _questId, context) => {
       if (context?.previousQuests) {

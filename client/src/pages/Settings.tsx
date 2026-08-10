@@ -204,6 +204,18 @@ export default function SettingsPage() {
               onChange={async (v) => {
                 await updateSettings({ notifyDailyQuests: v });
                 await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: v,
+                    notifyStreakRisk: me.notifyStreakRisk !== false,
+                    notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
               }}
               testId="toggle-notify-daily"
             />
@@ -214,6 +226,18 @@ export default function SettingsPage() {
               onChange={async (v) => {
                 await updateSettings({ notifyStreakRisk: v });
                 await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: me.notifyDailyQuests !== false,
+                    notifyStreakRisk: v,
+                    notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
               }}
               testId="toggle-notify-streak"
             />
@@ -224,6 +248,18 @@ export default function SettingsPage() {
               onChange={async (v) => {
                 await updateSettings({ notifyWeeklyChallenges: v });
                 await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: me.notifyDailyQuests !== false,
+                    notifyStreakRisk: me.notifyStreakRisk !== false,
+                    notifyWeeklyChallenges: v,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
               }}
               testId="toggle-notify-weekly"
             />

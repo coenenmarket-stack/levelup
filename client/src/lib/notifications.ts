@@ -8,11 +8,10 @@
  *   1003 — weekly challenge reminder (near week end)
  *
  * Limitations:
- * - Schedules are calendar-based at enable time; they do not re-evaluate
- *   server-side mid-day. We cancel+reschedule on Settings changes and on
- *   app resume when syncNotificationsForUser() is called.
- * - If streak becomes protected after schedule, the next resume/settings
- *   sync cancels the streak warning. Between syncs, a stale warning could fire.
+ * - Schedules are calendar-based; they re-evaluate on Settings changes, app
+ *   resume, and immediately after a successful quest completion.
+ * - If a streak warning was already delivered by the OS before resync, that
+ *   delivery cannot be retracted — only future scheduled firings are cancelled.
  */
 
 import { dayKeyLocal, isoWeekIdLocal } from "./dayKey";
@@ -113,6 +112,27 @@ export type SyncNotificationContext = {
   hasIncompleteWeekly?: boolean;
 };
 
+export const NOTIFICATION_IDS = {
+  daily: ID_DAILY,
+  streak: ID_STREAK,
+  weekly: ID_WEEKLY,
+} as const;
+
+/** Pure planner used by sync + tests — which notification IDs would be scheduled. */
+export function plannedRetentionNotificationIds(ctx: SyncNotificationContext): number[] {
+  if (!ctx.prefs.notificationsEnabled) return [];
+  const streak = getStreakStatus({
+    currentStreak: ctx.currentStreak,
+    longestStreak: ctx.longestStreak,
+    lastCompletionDate: ctx.lastCompletionDate,
+  });
+  const ids: number[] = [];
+  if (ctx.prefs.notifyDailyQuests && ctx.hasIncompleteDaily !== false) ids.push(ID_DAILY);
+  if (ctx.prefs.notifyStreakRisk && streak.atRisk && !streak.protectedToday) ids.push(ID_STREAK);
+  if (ctx.prefs.notifyWeeklyChallenges && ctx.hasIncompleteWeekly !== false) ids.push(ID_WEEKLY);
+  return ids;
+}
+
 export async function cancelAllRetentionNotifications(): Promise<void> {
   const native = await nativePlugin();
   if (!native) return;
@@ -152,8 +172,9 @@ export async function syncNotificationsForUser(ctx: SyncNotificationContext): Pr
   });
 
   const notifications: any[] = [];
+  const planned = plannedRetentionNotificationIds(ctx);
 
-  if (ctx.prefs.notifyDailyQuests && ctx.hasIncompleteDaily !== false) {
+  if (planned.includes(ID_DAILY)) {
     notifications.push({
       id: ID_DAILY,
       title: "Daily missions waiting",
@@ -163,8 +184,7 @@ export async function syncNotificationsForUser(ctx: SyncNotificationContext): Pr
     });
   }
 
-  // Streak warning only when at risk (not already protected today).
-  if (ctx.prefs.notifyStreakRisk && streak.atRisk && !streak.protectedToday) {
+  if (planned.includes(ID_STREAK)) {
     notifications.push({
       id: ID_STREAK,
       title: "Streak at risk",
@@ -174,7 +194,7 @@ export async function syncNotificationsForUser(ctx: SyncNotificationContext): Pr
     });
   }
 
-  if (ctx.prefs.notifyWeeklyChallenges && ctx.hasIncompleteWeekly !== false) {
+  if (planned.includes(ID_WEEKLY)) {
     notifications.push({
       id: ID_WEEKLY,
       title: "Weekly challenges",

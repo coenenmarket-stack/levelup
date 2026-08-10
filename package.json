@@ -8,7 +8,7 @@
     "build": "tsx script/build.ts",
     "preview": "vite preview --port 5000",
     "check": "tsc",
-    "test:unit": "tsx --test client/src/lib/dayKey.test.ts client/src/lib/streak.test.ts client/src/lib/dailyPackAssign.test.ts client/src/lib/achievements.test.ts",
+    "test:unit": "tsx --test client/src/lib/dayKey.test.ts client/src/lib/streak.test.ts client/src/lib/dailyPackAssign.test.ts client/src/lib/achievements.test.ts client/src/lib/notifications.test.ts",
     "icons": "tsx script/generate-icons.ts",
     "icons:ios": "tsx script/sync-ios-app-icon.ts",
     "icons:verify": "tsx script/verify-app-icon.ts",

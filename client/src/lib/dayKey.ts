@@ -63,10 +63,34 @@ export function dayDiff(a: string, b: string): number {
   return Math.round((bUtc - aUtc) / 86_400_000);
 }
 
-/** Yesterday's local day key. */
-export function yesterdayKeyLocal(d: Date = new Date()): string {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
-  return dayKeyLocal(x);
+/**
+ * Day key for an instant in a named IANA timezone (test / tooling helper).
+ * Runtime app logic uses `dayKeyLocal` (device local calendar).
+ */
+export function dayKeyInTimeZone(d: Date, timeZone: string): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  // en-CA yields YYYY-MM-DD
+  return fmt.format(d);
+}
+
+/**
+ * Whether an existing completionDate (or deterministic doc suffix day) blocks a
+ * new award for "today", given local+UTC candidate keys.
+ */
+export function blocksDuplicateForToday(
+  existingDayKeys: Iterable<string>,
+  now: Date = new Date(),
+): boolean {
+  const candidates = new Set(candidateDayKeys(now));
+  for (const day of Array.from(existingDayKeys)) {
+    if (candidates.has(day)) return true;
+  }
+  return false;
 }
 
 /**
