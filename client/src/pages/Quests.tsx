@@ -277,8 +277,11 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
                 </div>
                 <button
                   type="button"
-                  disabled={owned || addingId === item.id}
-                  onClick={() => addMut.mutate(item)}
+                  disabled={owned || addingId === item.id || addMut.isPending}
+                  onClick={() => {
+                    if (owned || addMut.isPending) return;
+                    addMut.mutate(item);
+                  }}
                   data-testid={`button-add-catalog-${item.id}`}
                   className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold bg-primary text-primary-foreground hover-elevate disabled:opacity-60 flex items-center gap-1.5"
                 >

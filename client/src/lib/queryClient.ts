@@ -9,7 +9,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import {
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, Timestamp, serverTimestamp,
+  collection, query, where, orderBy, Timestamp, serverTimestamp, limit,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import {
@@ -313,6 +313,19 @@ async function patchCharacter(uid: string, body: any) {
 }
 
 async function createQuest(uid: string, body: any) {
+  const catalogId = body.catalogId ? String(body.catalogId) : null;
+  if (catalogId) {
+    const existing = await getDocs(query(
+      collection(db, "characters", uid, "quests"),
+      where("catalogId", "==", catalogId),
+      limit(1),
+    ));
+    if (!existing.empty) {
+      const d = existing.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+  }
+
   const payload: Record<string, unknown> = {
     title: body.title,
     description: body.description ?? null,
@@ -323,7 +336,7 @@ async function createQuest(uid: string, body: any) {
     active: true,
     createdAt: new Date().toISOString(),
   };
-  if (body.catalogId) payload.catalogId = String(body.catalogId);
+  if (catalogId) payload.catalogId = catalogId;
   const ref = await addDoc(collection(db, "characters", uid, "quests"), payload);
   return { id: ref.id, ...payload };
 }

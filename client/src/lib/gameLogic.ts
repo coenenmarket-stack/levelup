@@ -9,8 +9,8 @@
 // own game.
 
 import {
-  doc, collection, getDoc, getDocs, addDoc, updateDoc, writeBatch,
-  query, where, limit,
+  doc, collection, getDoc, getDocs, addDoc, updateDoc, writeBatch, setDoc,
+  query, where, limit, runTransaction,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -404,6 +404,8 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const char: any = charSnap.data();
 
   // Block same-day re-completion for ALL quests (daily and side) to prevent XP double-dip.
+  // Legacy completions used auto IDs; also claim a deterministic doc so concurrent
+  // taps/tabs cannot both pass the query and award XP twice.
   const dup = await getDocs(query(
     collection(charRef, "completions"),
     where("questId", "==", questId),
@@ -412,8 +414,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
   ));
   if (!dup.empty) throw new Error("Already completed today");
 
-  // Append completion
-  await addDoc(collection(charRef, "completions"), {
+  const completionPayload = {
     questId,
     questTitle: quest.title,
     category: quest.category,
@@ -421,7 +422,21 @@ export async function completeQuestLocal(uid: string, questId: string) {
     xpReward: quest.xpReward,
     completedAt: nowISO(),
     completionDate: today,
-  });
+  };
+  const completionRef = doc(charRef, "completions", `${questId}_${today}`);
+  try {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(completionRef);
+      if (existing.exists()) throw new Error("Already completed today");
+      tx.set(completionRef, completionPayload);
+    });
+  } catch (e: any) {
+    if (String(e?.message || e).includes("Already completed today")) throw e;
+    // Fallback if rules/transaction path fails: still avoid silent double-award via create-only set.
+    const existing = await getDoc(completionRef);
+    if (existing.exists()) throw new Error("Already completed today");
+    await setDoc(completionRef, completionPayload);
+  }
 
   // Streak (compute before XP so multiplier can use today's streak)
   const last = char.lastCompletionDate;
