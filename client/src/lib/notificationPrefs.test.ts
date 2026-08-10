@@ -26,16 +26,34 @@ describe("notification prefs / quiet hours / rate limits", () => {
     assert.equal(p.quietHours.endHour, 8);
   });
 
-  it("maps legacy notificationsEnabled to push when unset", () => {
+  it("maps legacy notificationsEnabled without enabling remote push", () => {
     const p = mergeNotificationPrefsV2({ notificationsEnabled: true });
-    assert.equal(p.pushEnabled, true);
+    assert.equal(p.notificationsEnabled, true);
+    assert.equal(p.pushEnabled, false);
   });
 
-  it("detects quiet hours wrapping midnight", () => {
-    assert.equal(isInQuietHours(23, { enabled: true, startHour: 22, endHour: 8 }), true);
-    assert.equal(isInQuietHours(7, { enabled: true, startHour: 22, endHour: 8 }), true);
-    assert.equal(isInQuietHours(10, { enabled: true, startHour: 22, endHour: 8 }), false);
-    assert.equal(isInQuietHours(23, { enabled: false, startHour: 22, endHour: 8 }), false);
+  it("gates remote categories on pushEnabled only", () => {
+    const localOnly = {
+      ...DEFAULT_NOTIFICATION_PREFS_V2,
+      notificationsEnabled: true,
+      pushEnabled: false,
+    };
+    assert.equal(categoryEnabled(localOnly, "daily"), true);
+    assert.equal(categoryEnabled(localOnly, "friend_request"), false);
+    const remote = { ...localOnly, pushEnabled: true };
+    assert.equal(categoryEnabled(remote, "friend_request"), true);
+  });
+
+  it("quiet hours across overnight span", () => {
+    const quiet = { enabled: true, startHour: 22, endHour: 8 };
+    assert.equal(isInQuietHours(22, quiet), true);
+    assert.equal(isInQuietHours(23, quiet), true);
+    assert.equal(isInQuietHours(3, quiet), true);
+    assert.equal(isInQuietHours(7, quiet), true);
+    assert.equal(isInQuietHours(8, quiet), false);
+    assert.equal(isInQuietHours(10, quiet), false);
+    assert.equal(isInQuietHours(21, quiet), false);
+    assert.equal(isInQuietHours(23, { ...quiet, enabled: false }), false);
   });
 
   it("rate limits pushes per day", () => {
@@ -52,11 +70,17 @@ describe("notification prefs / quiet hours / rate limits", () => {
 
   it("requires email master + category", () => {
     assert.equal(
-      emailCategoryEnabled({ ...DEFAULT_NOTIFICATION_PREFS_V2, emailEnabled: true, emailWeeklyProgress: true }, "weekly"),
+      emailCategoryEnabled(
+        { ...DEFAULT_NOTIFICATION_PREFS_V2, emailEnabled: true, emailWeeklyProgress: true },
+        "weekly",
+      ),
       true,
     );
     assert.equal(
-      emailCategoryEnabled({ ...DEFAULT_NOTIFICATION_PREFS_V2, emailEnabled: false, emailWeeklyProgress: true }, "weekly"),
+      emailCategoryEnabled(
+        { ...DEFAULT_NOTIFICATION_PREFS_V2, emailEnabled: false, emailWeeklyProgress: true },
+        "weekly",
+      ),
       false,
     );
   });

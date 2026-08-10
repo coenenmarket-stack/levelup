@@ -15,6 +15,7 @@ import {
   renderWeeklyProgressEmail,
   sendTransactionalEmail,
 } from "./email.ts";
+import { nextBatchCursor, WEEKLY_EMAIL_BATCH_SIZE } from "./weeklyEmail.ts";
 
 describe("server notification prefs", () => {
   it("defaults push off and respects categories", () => {
@@ -24,6 +25,16 @@ describe("server notification prefs", () => {
     assert.equal(
       respectPreferences({ ...prefs, pushEnabled: true, notifyFriendRequests: false }, "friend_request"),
       false,
+    );
+  });
+
+  it("does not treat notificationsEnabled alone as remote push master", () => {
+    const prefs = mergeServerPrefs({ notificationsEnabled: true, pushEnabled: false });
+    assert.equal(prefs.pushEnabled, false);
+    assert.equal(respectPreferences(prefs, "friend_request"), false);
+    assert.equal(
+      respectPreferences(mergeServerPrefs({ pushEnabled: true, notifySocialMaster: true }), "party_invite"),
+      true,
     );
   });
 
@@ -115,5 +126,34 @@ describe("email eligibility + templates + unsubscribe prefs", () => {
       isWeeklyEmailSendWindow({ now: sundayUtc, timezone: "UTC", targetWeekday: 0, hourLocal: 17 }),
       false,
     );
+  });
+
+  it("paginates weekly email batches and resets when exhausted", () => {
+    const ids = Array.from({ length: 250 }, (_, i) => ({ id: `u${String(i).padStart(3, "0")}` }));
+    const page1 = nextBatchCursor(ids, WEEKLY_EMAIL_BATCH_SIZE);
+    assert.equal(page1.processedIds.length, 200);
+    assert.equal(page1.exhausted, false);
+    assert.equal(page1.nextCursorId, "u199");
+
+    const remaining = ids.slice(200);
+    const page2 = nextBatchCursor(remaining, WEEKLY_EMAIL_BATCH_SIZE);
+    assert.equal(page2.processedIds.length, 50);
+    assert.equal(page2.exhausted, true);
+    assert.equal(page2.nextCursorId, null);
+  });
+
+  it("handles provider timeout without throwing", async () => {
+    const r = await sendTransactionalEmail({
+      apiKey: "test-key",
+      to: "a@b.com",
+      subject: "t",
+      html: "<p>x</p>",
+      text: "x",
+      fetchImpl: async () => {
+        throw new Error("timeout");
+      },
+    });
+    assert.equal(r.ok, false);
+    assert.match(String(r.error), /timeout/);
   });
 });

@@ -117,6 +117,7 @@ type AuthCtx = {
     notifyWeeklyChallenges?: boolean;
     displayName?: string;
     showLifeGoal?: boolean;
+    pushEnabled?: boolean;
   }) => Promise<void>;
   deleteAccount: (currentPassword?: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -505,7 +506,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uid = auth.currentUser?.uid;
     if (uid) {
       try {
-        const { clearAllDeviceTokens } = await import("./pushNotifications");
+        const { clearAllDeviceTokens, setPushSessionUid } = await import("./pushNotifications");
+        setPushSessionUid(null);
         await clearAllDeviceTokens(uid);
       } catch {
         /* best-effort */
@@ -548,9 +550,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }) => {
     if (!fbUser) throw new Error("Not signed in");
     const patch: Record<string, unknown> = { ...fields };
-    if (fields.notificationsEnabled !== undefined && fields.pushEnabled === undefined) {
-      patch.pushEnabled = fields.notificationsEnabled;
-    }
+    // Do not infer pushEnabled from notificationsEnabled — callers must set both explicitly.
     await updateDoc(doc(db, "users", fbUser.uid), patch as any);
     if (fields.showLifeGoal !== undefined) {
       try {

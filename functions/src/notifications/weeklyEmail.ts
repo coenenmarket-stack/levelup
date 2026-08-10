@@ -1,12 +1,16 @@
 /**
  * Scheduled weekly progress email — Resend + preference gated.
  * Deploy later: firebase deploy --only functions:weeklyProgressEmailJob
+ *
+ * Batching: processes up to BATCH_SIZE users per hourly run, advancing a
+ * cursor so users beyond the first page are eventually covered within the
+ * Sunday send window (18:00–18:59 local). Idempotent via lastWeekId.
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import {
   isEmailEligible,
   isWeeklyEmailSendWindow,
@@ -17,10 +21,26 @@ import { mergeServerPrefs } from "./service";
 
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 const OPEN_URL = "https://level-up-life-73702.web.app/";
+export const WEEKLY_EMAIL_BATCH_SIZE = 200;
+
+/** Pure pagination helper — testable without Firestore. */
+export function nextBatchCursor(
+  docs: Array<{ id: string }>,
+  batchSize: number,
+): { processedIds: string[]; nextCursorId: string | null; exhausted: boolean } {
+  const slice = docs.slice(0, batchSize);
+  const exhausted = docs.length < batchSize;
+  const nextCursorId = slice.length ? slice[slice.length - 1]!.id : null;
+  return {
+    processedIds: slice.map((d) => d.id),
+    nextCursorId: exhausted ? null : nextCursorId,
+    exhausted,
+  };
+}
 
 /**
- * Runs hourly; sends only when user's local time is Sunday 18:00.
- * Processes in batches to stay within time limits.
+ * Runs hourly; sends only when user's local time is Sunday 18:00–18:59.
+ * Uses a rotating cursor so >200 opted-in users are covered across hours.
  */
 export const weeklyProgressEmailJob = onSchedule(
   {
@@ -33,21 +53,50 @@ export const weeklyProgressEmailJob = onSchedule(
     const db = getFirestore();
     const now = new Date();
     const apiKey = RESEND_API_KEY.value();
+    const weekId = isoWeekIdUTC(now);
 
-    // Scan users who opted into weekly email (field emailWeeklyProgress == true)
-    const snap = await db
+    const cursorRef = db.doc("system/weeklyEmailCursor");
+    const cursorSnap = await cursorRef.get();
+    const cursorData = cursorSnap.exists ? (cursorSnap.data() as any) : {};
+    const startAfterId =
+      cursorData.weekId === weekId && typeof cursorData.lastUid === "string"
+        ? (cursorData.lastUid as string)
+        : null;
+
+    let query = db
       .collection("users")
       .where("emailWeeklyProgress", "==", true)
-      .limit(200)
-      .get();
+      .orderBy("__name__")
+      .limit(WEEKLY_EMAIL_BATCH_SIZE);
+
+    if (startAfterId) {
+      const startDoc = await db.doc(`users/${startAfterId}`).get();
+      if (startDoc.exists) {
+        query = query.startAfter(startDoc);
+      }
+    }
+
+    const snap = await query.get();
+    const page = nextBatchCursor(
+      snap.docs.map((d: QueryDocumentSnapshot) => ({ id: d.id })),
+      WEEKLY_EMAIL_BATCH_SIZE,
+    );
 
     for (const docSnap of snap.docs) {
       const uid = docSnap.id;
       const prefs = mergeServerPrefs(docSnap.data());
-      if (!isWeeklyEmailSendWindow({ now, timezone: prefs.timezone })) continue;
+      // Wider window: entire 18:00 hour so retries within the hour can succeed
+      if (
+        !isWeeklyEmailSendWindow({
+          now,
+          timezone: prefs.timezone,
+          targetWeekday: 0,
+          hourLocal: 18,
+        })
+      ) {
+        continue;
+      }
 
-      // Idempotency: one send per ISO week
-      const weekId = isoWeekIdUTC(now);
       const metaRef = db.doc(`characters/${uid}/notificationMeta/weeklyEmail`);
       const meta = await metaRef.get();
       if (meta.exists && (meta.data() as any).lastWeekId === weekId) continue;
@@ -74,7 +123,6 @@ export const weeklyProgressEmailJob = onSchedule(
       const c = character.exists ? (character.data() as any) : {};
       const name = c.name || "Adventurer";
 
-      // Broad weekly stats — no private coach/goal text
       const weekBounds = isoWeekBoundsApprox(now);
       const comps = await db
         .collection(`characters/${uid}/completions`)
@@ -121,12 +169,22 @@ export const weeklyProgressEmailJob = onSchedule(
           providerId: result.id ?? null,
         });
       }
+      // On provider failure: do not set lastWeekId — retry later in the same hour window
+    }
+
+    // Advance or reset cursor for next hourly run
+    if (page.exhausted) {
+      await cursorRef.set({ weekId, lastUid: null, resetAt: new Date().toISOString() }, { merge: true });
+    } else if (page.nextCursorId) {
+      await cursorRef.set(
+        { weekId, lastUid: page.nextCursorId, updatedAt: new Date().toISOString() },
+        { merge: true },
+      );
     }
   },
 );
 
 function isoWeekIdUTC(d: Date): string {
-  // Simple YYYY-Www using ISO week
   const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = tmp.getUTCDay() || 7;
   tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);

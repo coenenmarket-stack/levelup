@@ -99,13 +99,8 @@ export function mergeNotificationPrefsV2(
     ...base,
     ...raw,
     quietHours: quiet,
-    // Preserve legacy master if pushEnabled unset
-    pushEnabled:
-      raw.pushEnabled === true
-        ? true
-        : raw.pushEnabled === false
-          ? false
-          : raw.notificationsEnabled === true,
+    // pushEnabled must be explicit — local notificationsEnabled is separate
+    pushEnabled: raw.pushEnabled === true,
     notificationsEnabled:
       raw.notificationsEnabled === true || raw.pushEnabled === true
         ? true
@@ -151,11 +146,10 @@ export type NotifyCategory =
   | "career_milestone";
 
 export function categoryEnabled(prefs: NotificationPrefsV2, category: NotifyCategory): boolean {
-  if (!prefs.pushEnabled && !prefs.notificationsEnabled) {
-    // Local retention can still use notificationsEnabled alone
-    if (category === "daily" || category === "streak" || category === "weekly") {
-      return !!prefs.notificationsEnabled;
-    }
+  const isLocalRetention = category === "daily" || category === "streak" || category === "weekly";
+  if (isLocalRetention) {
+    if (!prefs.notificationsEnabled) return false;
+  } else if (!prefs.pushEnabled) {
     return false;
   }
   switch (category) {

@@ -64,6 +64,7 @@ export async function saveDeviceToken(
   token: string,
   platform: "ios" | "android" | "web" = "ios",
 ): Promise<string> {
+  if (!uid || !token) return "";
   const deviceId = deviceIdFromToken(token);
   const payload: DeviceRecord = {
     pushToken: token,
@@ -104,30 +105,45 @@ export async function clearAllDeviceTokens(uid: string): Promise<void> {
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
 }
 
+/** Mutable session binding so account switches don't write tokens to the wrong uid. */
 let listenersAttached = false;
+let activeUid: string | null = null;
+let openHandler: ((data: Record<string, string>) => void) | null = null;
+
+export function setPushSessionUid(uid: string | null) {
+  activeUid = uid;
+}
 
 /**
  * Register for remote push, persist token, and attach refresh / open handlers.
  * Call after user grants permission (contextual UX — not on cold launch).
+ * Pass requestPermission=false to refresh tokens when OS permission is already granted.
  */
 export async function registerPushForUser(
   uid: string,
   opts?: {
     onNotificationOpen?: (data: Record<string, string>) => void;
     appVersion?: string;
+    /** Default true — set false for silent refresh when already granted */
+    requestPermission?: boolean;
   },
 ): Promise<{ ok: boolean; reason?: string; token?: string }> {
   const plugin = await pushPlugin();
   if (!plugin) return { ok: false, reason: "unsupported" };
 
-  const perm = await requestPushPermission();
+  activeUid = uid;
+  if (opts?.onNotificationOpen) openHandler = opts.onNotificationOpen;
+
+  const wantRequest = opts?.requestPermission !== false;
+  const perm = wantRequest ? await requestPushPermission() : await checkPushPermission();
   if (perm !== "granted") return { ok: false, reason: perm };
 
   if (!listenersAttached) {
     listenersAttached = true;
     await plugin.addListener("registration", async (token: { value: string }) => {
       try {
-        await saveDeviceToken(uid, token.value, "ios");
+        if (!activeUid) return;
+        await saveDeviceToken(activeUid, token.value, "ios");
       } catch (e) {
         console.warn("saveDeviceToken failed", e);
       }
@@ -137,12 +153,32 @@ export async function registerPushForUser(
     });
     await plugin.addListener("pushNotificationActionPerformed", (event: any) => {
       const data = (event?.notification?.data ?? {}) as Record<string, string>;
-      opts?.onNotificationOpen?.(data);
+      openHandler?.(data);
     });
   }
 
-  await plugin.register();
+  try {
+    await plugin.register();
+  } catch (e) {
+    console.warn("push register failed", e);
+    return { ok: false, reason: "register_failed" };
+  }
   return { ok: true, reason: "registered" };
+}
+
+/**
+ * If permission already granted and user has push enabled, refresh token without prompting.
+ * Safe when APNs/FCM are not configured — returns ok:false without throwing.
+ */
+export async function refreshPushRegistrationIfGranted(uid: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const perm = await checkPushPermission();
+    if (perm !== "granted") return { ok: false, reason: perm };
+    return registerPushForUser(uid, { requestPermission: false });
+  } catch (e) {
+    console.warn("refreshPushRegistrationIfGranted failed", e);
+    return { ok: false, reason: "error" };
+  }
 }
 
 /** Pure helpers for tests */

@@ -46,11 +46,14 @@ function mergeServerPrefs(raw) {
         ...exports.DEFAULT_SERVER_PREFS.quietHours,
         ...(raw?.quietHours && typeof raw.quietHours === "object" ? raw.quietHours : {}),
     };
+    // pushEnabled must be explicit — do not infer from local notificationsEnabled
+    const pushEnabled = raw?.pushEnabled === true;
     return {
         ...exports.DEFAULT_SERVER_PREFS,
         ...raw,
         quietHours: quiet,
-        pushEnabled: raw?.pushEnabled === true || (raw?.pushEnabled !== false && raw?.notificationsEnabled === true),
+        pushEnabled,
+        notificationsEnabled: raw?.notificationsEnabled === true || pushEnabled,
     };
 }
 function isInQuietHours(localHour, quiet) {
@@ -83,7 +86,8 @@ function localHourInTimezone(now, timezone) {
     }
 }
 function respectPreferences(prefs, category) {
-    if (!prefs.pushEnabled && !prefs.notificationsEnabled)
+    // Remote push requires explicit pushEnabled. notificationsEnabled alone is for local retention.
+    if (!prefs.pushEnabled)
         return false;
     switch (category) {
         case "friend_request":

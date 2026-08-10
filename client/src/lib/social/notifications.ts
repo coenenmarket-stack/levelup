@@ -1,6 +1,6 @@
 /**
  * Social notification preference categories (local scheduling architecture).
- * Delivery remains Capacitor local notifications / preference-gated — not spam pushes.
+ * Delivery for social events is remote push via Cloud Functions — not Capacitor local schedules.
  */
 
 export type SocialNotificationPrefs = {

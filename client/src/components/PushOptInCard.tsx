@@ -2,16 +2,24 @@
  * Contextual push opt-in — not shown on cold launch.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { registerPushForUser, shouldShowPushOptIn } from "@/lib/pushNotifications";
+import {
+  checkPushPermission,
+  registerPushForUser,
+  shouldShowPushOptIn,
+} from "@/lib/pushNotifications";
 import { requestNotificationPermission, syncNotificationsForUser } from "@/lib/notifications";
 import { useGame } from "@/lib/game";
 import { useLocation } from "wouter";
-import { resolveDeepLinkPath, destinationForNotificationType, destinationToPath } from "@/lib/notificationDeepLinks";
+import {
+  resolveDeepLinkPath,
+  destinationForNotificationType,
+  destinationToPath,
+} from "@/lib/notificationDeepLinks";
 import { trackNotificationEvent } from "@/lib/notificationAnalytics";
 
 const DISMISS_KEY = "lul_push_prompt_dismissed_ms";
@@ -24,6 +32,24 @@ export function PushOptInCard() {
   const [, setLoc] = useLocation();
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [storedPermission, setStoredPermission] = useState<string | null>(null);
+
+  const uid = me?.id ? String(me.id) : "";
+
+  useEffect(() => {
+    if (!uid) return;
+    void getDoc(doc(db, "users", uid))
+      .then((snap) => {
+        if (snap.exists()) {
+          const p = (snap.data() as any).pushPermission;
+          if (typeof p === "string") setStoredPermission(p);
+        }
+      })
+      .catch(() => {});
+    void checkPushPermission().then((p) => {
+      if (p === "denied") setStoredPermission("denied");
+    });
+  }, [uid]);
 
   if (!me || hidden) return null;
 
@@ -37,14 +63,12 @@ export function PushOptInCard() {
   if (
     !shouldShowPushOptIn({
       notificationsEnabled: !!me.notificationsEnabled,
-      pushPermission: null,
+      pushPermission: storedPermission,
       dismissedAtMs: dismissedLocal,
     })
   ) {
     return null;
   }
-
-  const uid = String(me.id);
 
   return (
     <section className="surface rounded-2xl p-4 space-y-3" data-testid="card-push-opt-in">
@@ -68,6 +92,23 @@ export function PushOptInCard() {
             setBusy(true);
             try {
               const localPerm = await requestNotificationPermission();
+              if (localPerm === "denied") {
+                await setDoc(
+                  doc(db, "users", uid),
+                  {
+                    pushPermission: "denied",
+                    pushEnabled: false,
+                    notificationsEnabled: false,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true },
+                );
+                setStoredPermission("denied");
+                trackNotificationEvent("push_permission_denied");
+                setHidden(true);
+                return;
+              }
+
               const push = await registerPushForUser(uid, {
                 onNotificationOpen: (data) => {
                   trackNotificationEvent("push_opened");
@@ -82,11 +123,33 @@ export function PushOptInCard() {
                   setLoc("/");
                 },
               });
-              await updateSettings({ notificationsEnabled: true });
+
+              if (!push.ok && push.reason === "denied") {
+                await setDoc(
+                  doc(db, "users", uid),
+                  {
+                    pushPermission: "denied",
+                    pushEnabled: false,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true },
+                );
+                setStoredPermission("denied");
+                trackNotificationEvent("push_permission_denied");
+                setHidden(true);
+                return;
+              }
+
+              // unsupported (web) still allows local retention prefs
+              const remoteOk = push.ok || push.reason === "unsupported" || push.reason === "register_failed";
+              await updateSettings({
+                notificationsEnabled: true,
+                pushEnabled: push.ok,
+              });
               await setDoc(
                 doc(db, "users", uid),
                 {
-                  pushEnabled: true,
+                  pushEnabled: push.ok,
                   notificationsEnabled: true,
                   pushPermission: push.ok ? "granted" : localPerm,
                   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
@@ -106,7 +169,8 @@ export function PushOptInCard() {
                 longestStreak: character?.longestStreak,
                 lastCompletionDate: character?.lastCompletionDate,
               });
-              trackNotificationEvent("push_permission_granted");
+              if (push.ok) trackNotificationEvent("push_permission_granted");
+              else if (!remoteOk) trackNotificationEvent("push_permission_denied");
               setHidden(true);
             } catch {
               trackNotificationEvent("push_permission_denied");

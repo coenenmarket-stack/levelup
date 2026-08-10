@@ -83,8 +83,13 @@ function GatedApp() {
                 notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
               },
             });
+            // Silent token refresh when already granted — no permission prompt
+            if (me.notificationsEnabled) {
+              const { refreshPushRegistrationIfGranted } = await import("./lib/pushNotifications");
+              await refreshPushRegistrationIfGranted(String(me.id));
+            }
           } catch {
-            /* ignore */
+            /* ignore — app must work without APNs/FCM */
           }
         });
       } catch {
@@ -96,6 +101,22 @@ function GatedApp() {
       void resumeHandle?.remove();
     };
   }, [me, setLoc]);
+
+  // One-shot silent push refresh after login (no prompt)
+  useEffect(() => {
+    if (!me?.onboarded || !me.notificationsEnabled) return;
+    void (async () => {
+      try {
+        const { refreshPushRegistrationIfGranted, setPushSessionUid } = await import(
+          "./lib/pushNotifications"
+        );
+        setPushSessionUid(String(me.id));
+        await refreshPushRegistrationIfGranted(String(me.id));
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [me?.id, me?.onboarded, me?.notificationsEnabled]);
 
   if (isLoading) return <FullScreenSpinner />;
 

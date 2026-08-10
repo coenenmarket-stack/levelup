@@ -185,18 +185,67 @@ export default function SettingsPage() {
           onChange={async (v) => {
             if (v) {
               const ok = window.confirm(
-                "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
+                "Level Up Life can remind you about daily missions, streak risk, friend challenges, and progress waiting. Continue to allow notifications?",
               );
               if (!ok) return;
               const { requestNotificationPermission, syncNotificationsForUser } = await import("@/lib/notifications");
-              const perm = await requestNotificationPermission();
-              if (perm === "denied") {
-                await updateSettings({ notificationsEnabled: false });
+              const { registerPushForUser, checkPushPermission } = await import("@/lib/pushNotifications");
+              const { doc, setDoc } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              const uid = String(me.id);
+
+              const localPerm = await requestNotificationPermission();
+              if (localPerm === "denied") {
+                await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+                await setDoc(
+                  doc(db, "users", uid),
+                  {
+                    pushPermission: "denied",
+                    pushEnabled: false,
+                    notificationsEnabled: false,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true },
+                );
                 await refresh();
-                window.alert("Notifications are blocked for this app. You can enable them in system Settings later.");
+                window.alert(
+                  "Notifications are blocked for this app. Open iOS Settings → Level Up Life → Notifications to enable them later.",
+                );
                 return;
               }
-              await updateSettings({ notificationsEnabled: true });
+
+              const push = await registerPushForUser(uid);
+              const pushPerm = push.ok ? "granted" : (await checkPushPermission());
+              if (!push.ok && push.reason === "denied") {
+                await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+                await setDoc(
+                  doc(db, "users", uid),
+                  { pushPermission: "denied", pushEnabled: false, updatedAt: new Date().toISOString() },
+                  { merge: true },
+                );
+                await refresh();
+                window.alert(
+                  "Push permission was denied. You can enable it later in iOS Settings → Level Up Life → Notifications.",
+                );
+                return;
+              }
+
+              // Local retention always; remote push only if registration succeeded (or unsupported web)
+              const remoteOk = push.ok || push.reason === "unsupported";
+              await updateSettings({
+                notificationsEnabled: true,
+                pushEnabled: remoteOk && push.reason !== "denied",
+              });
+              await setDoc(
+                doc(db, "users", uid),
+                {
+                  pushPermission: pushPerm,
+                  pushEnabled: remoteOk && push.reason !== "denied",
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+                  updatedAt: new Date().toISOString(),
+                },
+                { merge: true },
+              );
               await refresh();
               await syncNotificationsForUser({
                 prefs: {
@@ -210,7 +259,7 @@ export default function SettingsPage() {
                 lastCompletionDate: character.lastCompletionDate,
               });
             } else {
-              await updateSettings({ notificationsEnabled: false });
+              await updateSettings({ notificationsEnabled: false, pushEnabled: false });
               await refresh();
               const { cancelAllRetentionNotifications } = await import("@/lib/notifications");
               await cancelAllRetentionNotifications();
@@ -218,6 +267,12 @@ export default function SettingsPage() {
           }}
           testId="toggle-notifications"
         />
+        {!me.notificationsEnabled && (
+          <p className="text-[11px] text-muted-foreground px-1 pb-1" data-testid="text-notify-denied-hint">
+            If you previously denied permission, enable notifications in iOS Settings → Level Up Life, then turn this
+            back on.
+          </p>
+        )}
         {me.notificationsEnabled && (
           <>
             <ToggleRow
@@ -679,18 +734,21 @@ function SocialPrivacySettings({ uid }: { uid: string }) {
       <SettingsGroup title="Growth notifications">
         <ToggleRow
           label="Achievements"
-          sub="Milestone unlocks (not every quest)"
+          sub="Reserved for milestone unlocks when remote triggers ship (not every quest)"
           value={prefs?.notifyAchievements !== false}
           onChange={(v) => void save({ notifyAchievements: v })}
           testId="toggle-notify-achievements"
         />
         <ToggleRow
           label="Goals & career progress"
-          sub="Certification, hustle, and path milestones"
+          sub="Reserved for cert/path milestones when remote triggers ship"
           value={prefs?.notifyGoalsProgress !== false}
           onChange={(v) => void save({ notifyGoalsProgress: v })}
           testId="toggle-notify-goals"
         />
+        <p className="text-[11px] text-muted-foreground px-1 pt-1">
+          Preference storage is live; achievement/goal push delivery is preference-gated and not auto-fired yet.
+        </p>
       </SettingsGroup>
 
       <SettingsGroup title="Quiet hours">

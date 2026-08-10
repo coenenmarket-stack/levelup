@@ -12,11 +12,21 @@
 
 ## Architecture now
 
-**Local (unchanged responsibility):** daily quest + streak risk reminders via `@capacitor/local-notifications`.
+**Local (unchanged responsibility):** daily quest + streak risk reminders via `@capacitor/local-notifications`. Weekly local reminder may still schedule via retention path.
 
 **Remote push:** `@capacitor/push-notifications` → FCM → APNs. Tokens at `characters/{uid}/devices/{deviceId}` (owner-only). Server sends through `functions/src/notifications/service.ts` (`sendPushToUser` / prefs / quiet hours / rate limits / invalid token cleanup). Inbox records at `characters/{uid}/notifications` (CF create; client mark-read).
 
-**Email:** Resend HTTP API via secret `RESEND_API_KEY`. Weekly job `weeklyProgressEmailJob` (hourly schedule; sends when user-local Sunday 18:00). Opt-in only; verified email required.
+**Remote master:** `users/{uid}.pushEnabled` must be `true` for social/growth remote pushes. `notificationsEnabled` alone controls **local** retention only.
+
+**Email:** Resend HTTP API via secret `RESEND_API_KEY`. Weekly job `weeklyProgressEmailJob` (hourly schedule; sends Sunday 18:00–18:59 local). Opt-in only; verified email required. Batches of 200 with rotating cursor (`system/weeklyEmailCursor`).
+
+**Registration UX:**
+- No permission prompt on cold launch
+- Contextual `PushOptInCard` on Home + Settings enable path
+- Silent token refresh on resume/login when already granted
+- Denied state persisted; opt-in card respects deny + 14-day dismiss
+
+**Not yet auto-fired (prefs reserved):** achievement / goal / career milestone pushes; goal-reminder and social-digest email jobs.
 
 ---
 
@@ -25,16 +35,17 @@
 1. Open `ios/App/App.xcworkspace` in Xcode.
 2. Select target **App** → **Signing & Capabilities**.
 3. Add **Push Notifications** capability.
-4. Add **Background Modes** → enable **Remote notifications** (optional but recommended).
+4. Add **Background Modes** → enable **Remote notifications** (recommended).
 5. Confirm `App.entitlements` gains `aps-environment` (`development` / `production` per profile).
 6. Do **not** change bundle id (`com.coenenmarket.leveluplife`) or signing team unless intentional.
 
 ## Manual Firebase / APNs steps
 
 1. Firebase Console → Project settings → add/select **iOS app** with bundle id `com.coenenmarket.leveluplife`.
-2. Download **GoogleService-Info.plist** into `ios/App/App/` (currently missing from repo).
+2. Download **GoogleService-Info.plist** into `ios/App/App/` (currently **not** committed — do not invent one; keep out of git if team policy prefers secrets via CI).
 3. Cloud Messaging → **Apple app configuration** → upload **APNs Authentication Key** (.p8) from Apple Developer → Keys.
 4. Enable Cloud Messaging API if prompted.
+5. Expected Firebase project: **`level-up-life-73702`** (see `.firebaserc`).
 
 ## Secrets / email provider
 
@@ -65,8 +76,12 @@ Redeploy any social callable that imports the notification helper after code cha
 
 ## Badge count
 
-APNs payload sets `badge: 1` on send. Full unread badge sync would need `@capacitor/badge` or AppDelegate hooks — **skipped** as low-stability for this pass. Inbox unread is shown in-app.
+APNs payload sets `badge: 1` on send. Full unread badge sync would need `@capacitor/badge` or AppDelegate hooks — **intentionally skipped**. Inbox unread is shown in-app only. Do not treat badge as synchronized unread count.
 
 ## AI Coach
 
 Coach must **not** send pushes/emails autonomously. Only structured app notify helpers may send; AI may suggest “Want a reminder?” in chat only.
+
+## Scaling note (weekly email)
+
+`WEEKLY_EMAIL_BATCH_SIZE = 200` users per hourly run with cursor rotation. At Sunday 18:00 local, multiple hourly ticks within the hour can drain larger queues. Beyond ~200 × hours-in-window, expand batch size or shard by timezone.
