@@ -35,13 +35,35 @@ service cloud.firestore {
     match /characters/{uid} {
       allow read, write: if isOwner(uid);
 
+      // Push device tokens — owner only; never public
+      match /devices/{deviceId} {
+        allow read, create, update, delete: if isOwner(uid);
+      }
+
+      // Inbox — CF creates; owner may mark read
+      match /notifications/{notifId} {
+        allow read: if isOwner(uid);
+        allow create, delete: if false;
+        allow update: if isOwner(uid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['read', 'readAtMs']);
+      }
+
+      // Rate-limit / email send meta — CF only
+      match /notificationMeta/{metaId} {
+        allow read: if isOwner(uid);
+        allow create, update, delete: if false;
+      }
+
       // Sub-collections under characters/{uid}
       // Includes Phase 3 private personalization data (owner-only):
       //   personalization/prefs, goals/*, careerProgress/*, recFeedback/*,
       //   coachMemory/state, guideProgress/{certifications|sideHustles}
       // These must NEVER be mirrored into publicProfiles.
+      // devices / notifications / notificationMeta handled above.
       match /{subcollection}/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read, write: if isOwner(uid)
+          && !(subcollection in ['devices', 'notifications', 'notificationMeta']);
       }
     }
 

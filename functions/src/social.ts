@@ -78,6 +78,30 @@ async function writeSocialActivity(params: {
   return ref.id;
 }
 
+async function notifySafe(
+  uid: string,
+  category:
+    | "friend_request"
+    | "friend_accepted"
+    | "shared_challenge_invite"
+    | "shared_challenge_accepted"
+    | "shared_challenge_complete"
+    | "party_invite"
+    | "party_joined"
+    | "party_challenge_complete"
+    | "referral_activated",
+  title: string,
+  body: string,
+  data: Record<string, string> = {},
+) {
+  try {
+    const { notifyUserSafe } = await import("./notifications/notify");
+    await notifyUserSafe(uid, category, title, body, data);
+  } catch (e) {
+    console.warn("social notify skipped", e);
+  }
+}
+
 // --- Referrals ---
 
 export const redeemReferralCode = onCall({ region: "us-central1" }, async (req) => {
@@ -123,6 +147,12 @@ export const redeemReferralCode = onCall({ region: "us-central1" }, async (req) 
       requestedBy: uid,
       createdAt: FieldValue.serverTimestamp(),
     });
+    await notifySafe(
+      referrerUid,
+      "friend_request",
+      "New friend request",
+      "Someone used your invite code.",
+    );
     return { status: "pending", friendshipId: fid, referralId: referralDocId };
   }
   const fdata = fsnap.data() as any;
@@ -131,6 +161,7 @@ export const redeemReferralCode = onCall({ region: "us-central1" }, async (req) 
   }
   if (fdata.status === "pending" && fdata.requestedBy === referrerUid) {
     await fref.update({ status: "accepted", acceptedAt: FieldValue.serverTimestamp() });
+    await notifySafe(referrerUid, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
     return { status: "accepted", friendshipId: fid, referralId: referralDocId };
   }
   return { status: "pending", friendshipId: fid, referralId: referralDocId };
@@ -180,6 +211,13 @@ export const activateReferral = onCall({ region: "us-central1" }, async (req) =>
     payload: { count },
     visibleTo: [data.referrerUid, ...friends].slice(0, 40),
   });
+
+  await notifySafe(
+    data.referrerUid,
+    "referral_activated",
+    "Referral activated",
+    "Someone you invited completed their first quest.",
+  );
 
   return { activated: true, referralId: docSnap.id, activatedCount: count };
 });
@@ -275,6 +313,13 @@ export const inviteSharedChallenge = onCall({ region: "us-central1" }, async (re
     rewardClaimedBy: [],
     title: def.title,
   });
+  await notifySafe(
+    friendUid,
+    "shared_challenge_invite",
+    "Shared challenge invite",
+    def.title,
+    { challengeId: id },
+  );
   return { id, status: "pending" };
 });
 
@@ -309,6 +354,13 @@ export const respondSharedChallenge = onCall({ region: "us-central1" }, async (r
     endsAt,
     progress: 0,
   });
+  await notifySafe(
+    data.hostUid,
+    "shared_challenge_accepted",
+    "Challenge accepted",
+    def?.title ?? "Shared challenge is active",
+    { challengeId },
+  );
   return { status: "active" };
 });
 
@@ -413,6 +465,15 @@ export const refreshSharedChallengeProgress = onCall({ region: "us-central1" }, 
       payload: { title: def.title },
       visibleTo: data.participantUids,
     });
+    for (const member of data.participantUids as string[]) {
+      await notifySafe(
+        member,
+        "shared_challenge_complete",
+        "Shared challenge complete",
+        def.title,
+        { challengeId },
+      );
+    }
   }
   await ref.update(patch);
   return { progress, status: patch.status ?? "active" };
@@ -466,6 +527,9 @@ export const inviteToParty = onCall({ region: "us-central1" }, async (req) => {
     createdAt: nowISO(),
     expiresAt: addDays(dayKeyLocal(), 7),
   });
+  await notifySafe(friendUid, "party_invite", "Party invite", "You've been invited to a party.", {
+    partyId,
+  });
   return { inviteId };
 });
 
@@ -511,6 +575,15 @@ export const respondPartyInvite = onCall({ region: "us-central1" }, async (req) 
     payload: { partyName: party?.name ?? "Party" },
     visibleTo: party?.memberUids ?? [uid],
   });
+  if (party?.ownerUid && party.ownerUid !== uid) {
+    await notifySafe(
+      party.ownerUid,
+      "party_joined",
+      "Party member joined",
+      `${party?.name ?? "Party"} has a new member.`,
+      { partyId: inv.partyId },
+    );
+  }
   return { status: "accepted" };
 });
 
@@ -669,6 +742,15 @@ export const refreshPartyChallengeProgress = onCall({ region: "us-central1" }, a
       payload: { title: def.title },
       visibleTo: data.memberUids,
     });
+    for (const member of data.memberUids as string[]) {
+      await notifySafe(
+        member,
+        "party_challenge_complete",
+        "Party challenge complete",
+        def.title,
+        { partyId: data.partyId },
+      );
+    }
   }
   await ref.update(patch);
   return { progress, status: patch.status ?? "active" };

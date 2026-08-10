@@ -5,8 +5,41 @@
 // writes to characters/{uid} (game-progress fields), categories, completions,
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.refreshPartyChallengeProgress = exports.startPartyChallenge = exports.renameParty = exports.kickPartyMember = exports.leaveParty = exports.respondPartyInvite = exports.inviteToParty = exports.createParty = exports.refreshSharedChallengeProgress = exports.respondSharedChallenge = exports.inviteSharedChallenge = exports.unblockUser = exports.blockUser = exports.activateReferral = exports.redeemReferralCode = exports.findFacebookFriends = exports.linkFacebookAccount = exports.claimNativeFacebookSession = exports.createNativeFacebookSession = exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.requestFriendByUid = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
+exports.weeklyProgressEmailJob = exports.refreshPartyChallengeProgress = exports.startPartyChallenge = exports.renameParty = exports.kickPartyMember = exports.leaveParty = exports.respondPartyInvite = exports.inviteToParty = exports.createParty = exports.refreshSharedChallengeProgress = exports.respondSharedChallenge = exports.inviteSharedChallenge = exports.unblockUser = exports.blockUser = exports.activateReferral = exports.redeemReferralCode = exports.findFacebookFriends = exports.linkFacebookAccount = exports.claimNativeFacebookSession = exports.createNativeFacebookSession = exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.requestFriendByUid = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
@@ -1130,6 +1163,13 @@ async function createOrAcceptFriendship(uid, targetUid) {
         requestedBy: uid,
         createdAt: firestore_1.FieldValue.serverTimestamp(),
     });
+    try {
+        const { notifyUserSafe } = await Promise.resolve().then(() => __importStar(require("./notifications/notify")));
+        await notifyUserSafe(targetUid, "friend_request", "New friend request", "Someone wants to connect on Level Up Life.");
+    }
+    catch (e) {
+        console.warn("friend request notify failed", e);
+    }
     return { status: "pending", friendshipId: id };
 }
 /** Add friend by Firebase uid (used after Facebook friend discovery). */
@@ -1176,6 +1216,17 @@ exports.respondToFriendRequest = (0, https_1.onCall)({ region: "us-central1" }, 
         status: "accepted",
         acceptedAt: firestore_1.FieldValue.serverTimestamp(),
     });
+    const other = data.uids.find((u) => u !== uid);
+    if (other) {
+        try {
+            const { notifyUserSafe } = await Promise.resolve().then(() => __importStar(require("./notifications/notify")));
+            await notifyUserSafe(other, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
+            await notifyUserSafe(data.requestedBy, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
+        }
+        catch (e) {
+            console.warn("friend accept notify failed", e);
+        }
+    }
     return { status: "accepted" };
 });
 exports.removeFriend = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
@@ -1451,4 +1502,6 @@ Object.defineProperty(exports, "kickPartyMember", { enumerable: true, get: funct
 Object.defineProperty(exports, "renameParty", { enumerable: true, get: function () { return social_1.renameParty; } });
 Object.defineProperty(exports, "startPartyChallenge", { enumerable: true, get: function () { return social_1.startPartyChallenge; } });
 Object.defineProperty(exports, "refreshPartyChallengeProgress", { enumerable: true, get: function () { return social_1.refreshPartyChallengeProgress; } });
+var weeklyEmail_1 = require("./notifications/weeklyEmail");
+Object.defineProperty(exports, "weeklyProgressEmailJob", { enumerable: true, get: function () { return weeklyEmail_1.weeklyProgressEmailJob; } });
 //# sourceMappingURL=index.js.map

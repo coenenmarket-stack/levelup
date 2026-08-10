@@ -31,6 +31,7 @@ import Friends from "./pages/Friends";
 import Invite from "./pages/Invite";
 import SocialHub from "./pages/SocialHub";
 import Leaderboard from "./pages/Leaderboard";
+import Notifications from "./pages/Notifications";
 import Personalize from "./pages/Personalize";
 import Explore from "./pages/Explore";
 import Goals from "./pages/Goals";
@@ -123,6 +124,7 @@ function GatedApp() {
           <Route path="/invite" component={Invite} />
           <Route path="/social" component={SocialHub} />
           <Route path="/leaderboard" component={Leaderboard} />
+          <Route path="/notifications" component={Notifications} />
           <Route path="/personalize" component={Personalize} />
           <Route path="/explore" component={Explore} />
           <Route path="/goals" component={Goals} />

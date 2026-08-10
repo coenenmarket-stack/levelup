@@ -17,6 +17,7 @@ import {
   Compass,
   Map,
   Target,
+  Bell,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { ReactNode, useEffect, useState } from "react";
@@ -41,6 +42,7 @@ const menuItems = [
   { href: "/invite", label: "Invite", icon: Users, testId: "menu-invite" },
   { href: "/social", label: "Social", icon: Users, testId: "menu-social" },
   { href: "/leaderboard", label: "Leaderboard", icon: BarChart3, testId: "menu-leaderboard" },
+  { href: "/notifications", label: "Inbox", icon: Bell, testId: "menu-notifications" },
   { href: "/achievements", label: "Achievements", icon: Trophy, testId: "menu-achievements" },
   { href: "/stats", label: "Progress", icon: BarChart3, testId: "menu-progress" },
   { href: "/certifications", label: "Certifications", icon: GraduationCap, testId: "menu-certifications" },

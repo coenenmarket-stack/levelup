@@ -3,6 +3,39 @@
  * Phase 4 social Cloud Functions — server-authoritative transitions.
  * Deploy later with: firebase deploy --only functions:redeemReferralCode,functions:activateReferral,...
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.refreshPartyChallengeProgress = exports.startPartyChallenge = exports.renameParty = exports.kickPartyMember = exports.leaveParty = exports.respondPartyInvite = exports.inviteToParty = exports.createParty = exports.refreshSharedChallengeProgress = exports.respondSharedChallenge = exports.inviteSharedChallenge = exports.unblockUser = exports.blockUser = exports.activateReferral = exports.redeemReferralCode = void 0;
 const crypto_1 = require("crypto");
@@ -66,6 +99,15 @@ async function writeSocialActivity(params) {
     });
     return ref.id;
 }
+async function notifySafe(uid, category, title, body, data = {}) {
+    try {
+        const { notifyUserSafe } = await Promise.resolve().then(() => __importStar(require("./notifications/notify")));
+        await notifyUserSafe(uid, category, title, body, data);
+    }
+    catch (e) {
+        console.warn("social notify skipped", e);
+    }
+}
 // --- Referrals ---
 exports.redeemReferralCode = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
     const uid = requireAuth(req);
@@ -110,6 +152,7 @@ exports.redeemReferralCode = (0, https_1.onCall)({ region: "us-central1" }, asyn
             requestedBy: uid,
             createdAt: firestore_1.FieldValue.serverTimestamp(),
         });
+        await notifySafe(referrerUid, "friend_request", "New friend request", "Someone used your invite code.");
         return { status: "pending", friendshipId: fid, referralId: referralDocId };
     }
     const fdata = fsnap.data();
@@ -118,6 +161,7 @@ exports.redeemReferralCode = (0, https_1.onCall)({ region: "us-central1" }, asyn
     }
     if (fdata.status === "pending" && fdata.requestedBy === referrerUid) {
         await fref.update({ status: "accepted", acceptedAt: firestore_1.FieldValue.serverTimestamp() });
+        await notifySafe(referrerUid, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
         return { status: "accepted", friendshipId: fid, referralId: referralDocId };
     }
     return { status: "pending", friendshipId: fid, referralId: referralDocId };
@@ -166,6 +210,7 @@ exports.activateReferral = (0, https_1.onCall)({ region: "us-central1" }, async 
         payload: { count },
         visibleTo: [data.referrerUid, ...friends].slice(0, 40),
     });
+    await notifySafe(data.referrerUid, "referral_activated", "Referral activated", "Someone you invited completed their first quest.");
     return { activated: true, referralId: docSnap.id, activatedCount: count };
 });
 async function listFriendUids(uid) {
@@ -263,6 +308,7 @@ exports.inviteSharedChallenge = (0, https_1.onCall)({ region: "us-central1" }, a
         rewardClaimedBy: [],
         title: def.title,
     });
+    await notifySafe(friendUid, "shared_challenge_invite", "Shared challenge invite", def.title, { challengeId: id });
     return { id, status: "pending" };
 });
 exports.respondSharedChallenge = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
@@ -296,6 +342,7 @@ exports.respondSharedChallenge = (0, https_1.onCall)({ region: "us-central1" }, 
         endsAt,
         progress: 0,
     });
+    await notifySafe(data.hostUid, "shared_challenge_accepted", "Challenge accepted", def?.title ?? "Shared challenge is active", { challengeId });
     return { status: "active" };
 });
 async function loadParticipantComps(uids, start, end) {
@@ -391,6 +438,9 @@ exports.refreshSharedChallengeProgress = (0, https_1.onCall)({ region: "us-centr
             payload: { title: def.title },
             visibleTo: data.participantUids,
         });
+        for (const member of data.participantUids) {
+            await notifySafe(member, "shared_challenge_complete", "Shared challenge complete", def.title, { challengeId });
+        }
     }
     await ref.update(patch);
     return { progress, status: patch.status ?? "active" };
@@ -447,6 +497,9 @@ exports.inviteToParty = (0, https_1.onCall)({ region: "us-central1" }, async (re
         createdAt: nowISO(),
         expiresAt: addDays(dayKeyLocal(), 7),
     });
+    await notifySafe(friendUid, "party_invite", "Party invite", "You've been invited to a party.", {
+        partyId,
+    });
     return { inviteId };
 });
 exports.respondPartyInvite = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
@@ -494,6 +547,9 @@ exports.respondPartyInvite = (0, https_1.onCall)({ region: "us-central1" }, asyn
         payload: { partyName: party?.name ?? "Party" },
         visibleTo: party?.memberUids ?? [uid],
     });
+    if (party?.ownerUid && party.ownerUid !== uid) {
+        await notifySafe(party.ownerUid, "party_joined", "Party member joined", `${party?.name ?? "Party"} has a new member.`, { partyId: inv.partyId });
+    }
     return { status: "accepted" };
 });
 exports.leaveParty = (0, https_1.onCall)({ region: "us-central1" }, async (req) => {
@@ -653,6 +709,9 @@ exports.refreshPartyChallengeProgress = (0, https_1.onCall)({ region: "us-centra
             payload: { title: def.title },
             visibleTo: data.memberUids,
         });
+        for (const member of data.memberUids) {
+            await notifySafe(member, "party_challenge_complete", "Party challenge complete", def.title, { partyId: data.partyId });
+        }
     }
     await ref.update(patch);
     return { progress, status: patch.status ?? "active" };

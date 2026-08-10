@@ -30,6 +30,12 @@ import {
   mergeSocialNotificationPrefs,
   type SocialNotificationPrefs,
 } from "./notifications";
+import {
+  DEFAULT_NOTIFICATION_PREFS_V2,
+  mergeNotificationPrefsV2,
+  type NotificationPrefsV2,
+  type QuietHours,
+} from "../notificationPrefs";
 import { ACTIVITY_FEED_LIMIT } from "./activity";
 import { isoWeekBoundsLocal, isoWeekIdLocal } from "../dayKey";
 
@@ -217,18 +223,53 @@ export async function loadPartyChallenges(partyId: string): Promise<PartyChallen
 
 // --- Privacy / social prefs on users/{uid} ---
 
-export type SocialUserPrefs = LeaderboardPrivacy & SocialNotificationPrefs;
+export type SocialUserPrefs = LeaderboardPrivacy &
+  SocialNotificationPrefs &
+  Pick<
+    NotificationPrefsV2,
+    | "pushEnabled"
+    | "emailEnabled"
+    | "emailWeeklyProgress"
+    | "emailGoalReminders"
+    | "emailSocialDigest"
+    | "notifyAchievements"
+    | "notifyGoalsProgress"
+    | "quietHours"
+    | "timezone"
+  >;
 
 export async function readSocialUserPrefs(uid: string): Promise<SocialUserPrefs> {
   try {
     const snap = await getDoc(doc(db, "users", uid));
     const data = snap.exists() ? (snap.data() as any) : {};
+    const v2 = mergeNotificationPrefsV2(data);
     return {
       ...mergeLeaderboardPrivacy(data),
       ...mergeSocialNotificationPrefs(data),
+      pushEnabled: v2.pushEnabled,
+      emailEnabled: v2.emailEnabled,
+      emailWeeklyProgress: v2.emailWeeklyProgress,
+      emailGoalReminders: v2.emailGoalReminders,
+      emailSocialDigest: v2.emailSocialDigest,
+      notifyAchievements: v2.notifyAchievements,
+      notifyGoalsProgress: v2.notifyGoalsProgress,
+      quietHours: v2.quietHours,
+      timezone: v2.timezone ?? null,
     };
   } catch {
-    return { ...DEFAULT_LEADERBOARD_PRIVACY, ...DEFAULT_SOCIAL_NOTIFICATION_PREFS };
+    return {
+      ...DEFAULT_LEADERBOARD_PRIVACY,
+      ...DEFAULT_SOCIAL_NOTIFICATION_PREFS,
+      pushEnabled: false,
+      emailEnabled: false,
+      emailWeeklyProgress: false,
+      emailGoalReminders: false,
+      emailSocialDigest: false,
+      notifyAchievements: true,
+      notifyGoalsProgress: true,
+      quietHours: DEFAULT_NOTIFICATION_PREFS_V2.quietHours,
+      timezone: null,
+    };
   }
 }
 
@@ -247,6 +288,8 @@ export async function writeSocialUserPrefs(uid: string, patch: Partial<SocialUse
     );
   }
 }
+
+export type { QuietHours };
 
 export async function loadSocialActivity(uid: string) {
   const snap = await getDocs(

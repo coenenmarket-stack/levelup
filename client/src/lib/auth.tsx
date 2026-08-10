@@ -502,6 +502,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      try {
+        const { clearAllDeviceTokens } = await import("./pushNotifications");
+        await clearAllDeviceTokens(uid);
+      } catch {
+        /* best-effort */
+      }
+    }
     await signOut(auth);
     dropGameCaches();
   };
@@ -535,9 +544,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     notifyWeeklyChallenges?: boolean;
     displayName?: string;
     showLifeGoal?: boolean;
+    pushEnabled?: boolean;
   }) => {
     if (!fbUser) throw new Error("Not signed in");
-    await updateDoc(doc(db, "users", fbUser.uid), fields);
+    const patch: Record<string, unknown> = { ...fields };
+    if (fields.notificationsEnabled !== undefined && fields.pushEnabled === undefined) {
+      patch.pushEnabled = fields.notificationsEnabled;
+    }
+    await updateDoc(doc(db, "users", fbUser.uid), patch as any);
     if (fields.showLifeGoal !== undefined) {
       try {
         const { syncPublicProfileLocal } = await import("./friends");

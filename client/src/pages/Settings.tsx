@@ -672,7 +672,80 @@ function SocialPrivacySettings({ uid }: { uid: string }) {
           </>
         )}
         <p className="text-[11px] text-muted-foreground px-1 pt-1">
-          Social alerts use the same local notification path as retention reminders — not a push for every quest contribution.
+          Social alerts use remote push when enabled. Daily/streak reminders stay on local notifications.
+        </p>
+      </SettingsGroup>
+
+      <SettingsGroup title="Growth notifications">
+        <ToggleRow
+          label="Achievements"
+          sub="Milestone unlocks (not every quest)"
+          value={prefs?.notifyAchievements !== false}
+          onChange={(v) => void save({ notifyAchievements: v })}
+          testId="toggle-notify-achievements"
+        />
+        <ToggleRow
+          label="Goals & career progress"
+          sub="Certification, hustle, and path milestones"
+          value={prefs?.notifyGoalsProgress !== false}
+          onChange={(v) => void save({ notifyGoalsProgress: v })}
+          testId="toggle-notify-goals"
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Quiet hours">
+        <ToggleRow
+          label="Quiet hours"
+          sub="Default 10:00 PM – 8:00 AM local. Routine push is skipped."
+          value={prefs?.quietHours?.enabled !== false}
+          onChange={(v) =>
+            void save({
+              quietHours: {
+                enabled: v,
+                startHour: prefs?.quietHours?.startHour ?? 22,
+                endHour: prefs?.quietHours?.endHour ?? 8,
+              },
+            })
+          }
+          testId="toggle-quiet-hours"
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Email">
+        <ToggleRow
+          label="Email notifications"
+          sub="Off by default. Requires a verified email. Not marketing."
+          value={prefs?.emailEnabled === true}
+          onChange={(v) => void save({ emailEnabled: v })}
+          testId="toggle-email-master"
+        />
+        {prefs?.emailEnabled === true && (
+          <>
+            <ToggleRow
+              label="Weekly progress email"
+              sub="Sunday evening summary in your timezone"
+              value={prefs?.emailWeeklyProgress === true}
+              onChange={(v) => void save({ emailWeeklyProgress: v })}
+              testId="toggle-email-weekly"
+            />
+            <ToggleRow
+              label="Goal reminders"
+              sub="Occasional nudge for active goals"
+              value={prefs?.emailGoalReminders === true}
+              onChange={(v) => void save({ emailGoalReminders: v })}
+              testId="toggle-email-goals"
+            />
+            <ToggleRow
+              label="Social digest"
+              sub="Bundled friend updates — not one email per event"
+              value={prefs?.emailSocialDigest === true}
+              onChange={(v) => void save({ emailSocialDigest: v })}
+              testId="toggle-email-social"
+            />
+          </>
+        )}
+        <p className="text-[11px] text-muted-foreground px-1 pt-1">
+          Change these anytime. Account security emails from Firebase Auth are separate.
         </p>
       </SettingsGroup>
     </>

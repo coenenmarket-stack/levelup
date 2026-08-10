@@ -1195,6 +1195,12 @@ async function createOrAcceptFriendship(uid: string, targetUid: string) {
     requestedBy: uid,
     createdAt: FieldValue.serverTimestamp(),
   });
+  try {
+    const { notifyUserSafe } = await import("./notifications/notify");
+    await notifyUserSafe(targetUid, "friend_request", "New friend request", "Someone wants to connect on Level Up Life.");
+  } catch (e) {
+    console.warn("friend request notify failed", e);
+  }
   return { status: "pending", friendshipId: id };
 }
 
@@ -1239,6 +1245,16 @@ export const respondToFriendRequest = onCall({ region: "us-central1" }, async (r
     status: "accepted",
     acceptedAt: FieldValue.serverTimestamp(),
   });
+  const other = (data.uids as string[]).find((u) => u !== uid);
+  if (other) {
+    try {
+      const { notifyUserSafe } = await import("./notifications/notify");
+      await notifyUserSafe(other, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
+      await notifyUserSafe(data.requestedBy, "friend_accepted", "Friend request accepted", "You're connected on Level Up Life.");
+    } catch (e) {
+      console.warn("friend accept notify failed", e);
+    }
+  }
   return { status: "accepted" };
 });
 
@@ -1537,3 +1553,5 @@ export {
   startPartyChallenge,
   refreshPartyChallengeProgress,
 } from "./social";
+
+export { weeklyProgressEmailJob } from "./notifications/weeklyEmail";
