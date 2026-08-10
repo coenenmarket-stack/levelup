@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useGame } from "@/lib/game";
@@ -11,6 +11,8 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronRight, LogOut, Trash2, Lock, Mail, ShieldAlert, X, Check, Loader2, Upload } from "lucide-react";
 import { compressAvatar } from "@/lib/imageUpload";
+import { readSocialUserPrefs, writeSocialUserPrefs } from "@/lib/social/api";
+import type { SocialUserPrefs } from "@/lib/social/api";
 
 const AVATAR_CLASSES = [
   { key: "warrior", name: "Warrior", emoji: "⚔️" },
@@ -302,6 +304,8 @@ export default function SettingsPage() {
         />
       </SettingsGroup>
 
+      <SocialPrivacySettings uid={me.id ? String(me.id) : ""} />
+
       {/* Security */}
       <SettingsGroup title="Security">
         {me.provider === "password" && (
@@ -542,6 +546,136 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <div className="mt-1.5">{children}</div>
       {hint && <p className="text-[10px] text-muted-foreground mt-1">{hint}</p>}
     </div>
+  );
+}
+
+function SocialPrivacySettings({ uid }: { uid: string }) {
+  const { toast } = useToast();
+  const prefsQuery = useQuery({
+    queryKey: ["social-user-prefs", uid],
+    enabled: !!uid,
+    queryFn: () => readSocialUserPrefs(uid),
+  });
+  const prefs = prefsQuery.data;
+
+  const save = async (patch: Partial<SocialUserPrefs>) => {
+    if (!uid) return;
+    try {
+      await writeSocialUserPrefs(uid, patch);
+      await prefsQuery.refetch();
+    } catch (e: any) {
+      toast({ title: "Couldn't save", description: e?.message ?? String(e), variant: "destructive" });
+    }
+  };
+
+  if (!uid) return null;
+
+  return (
+    <>
+      <SettingsGroup title="Social privacy">
+        <ToggleRow
+          label="Leaderboard participation"
+          sub="Off by default. Opt in to appear on friend/party weekly ranks."
+          value={prefs?.leaderboardOptIn === true}
+          onChange={(v) => void save({ leaderboardOptIn: v })}
+          testId="toggle-leaderboard-opt-in"
+        />
+        <ToggleRow
+          label="Show level to friends"
+          sub="Level and title on your friend profile"
+          value={prefs?.showLevelToFriends !== false}
+          onChange={(v) => void save({ showLevelToFriends: v })}
+          testId="toggle-show-level-friends"
+        />
+        <ToggleRow
+          label="Show streak to friends"
+          sub="Current streak on your friend profile"
+          value={prefs?.showStreakToFriends !== false}
+          onChange={(v) => void save({ showStreakToFriends: v })}
+          testId="toggle-show-streak-friends"
+        />
+        <ToggleRow
+          label="Show skills to friends"
+          sub="Skill levels used for compare view"
+          value={prefs?.showSkillsToFriends !== false}
+          onChange={(v) => void save({ showSkillsToFriends: v })}
+          testId="toggle-show-skills-friends"
+        />
+        <ToggleRow
+          label="Show showcase achievements"
+          sub="Up to three badges on your friend profile"
+          value={prefs?.showShowcaseAchievements !== false}
+          onChange={(v) => void save({ showShowcaseAchievements: v })}
+          testId="toggle-show-showcase"
+        />
+        <ToggleRow
+          label="Social activity visibility"
+          sub="Allow milestone events in friends' social feeds"
+          value={prefs?.showSocialActivity !== false}
+          onChange={(v) => void save({ showSocialActivity: v })}
+          testId="toggle-show-social-activity"
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Social notifications">
+        <ToggleRow
+          label="Social notifications"
+          sub="Master switch for friend, challenge, party, and referral alerts"
+          value={prefs?.notifySocialMaster !== false}
+          onChange={(v) => void save({ notifySocialMaster: v })}
+          testId="toggle-notify-social-master"
+        />
+        {prefs?.notifySocialMaster !== false && (
+          <>
+            <ToggleRow
+              label="Friend requests"
+              sub="Incoming requests and acceptances"
+              value={prefs?.notifyFriendRequests !== false}
+              onChange={(v) => void save({ notifyFriendRequests: v })}
+              testId="toggle-notify-friend-requests"
+            />
+            <ToggleRow
+              label="Challenge invites"
+              sub="Shared challenge invitations"
+              value={prefs?.notifyChallengeInvites !== false}
+              onChange={(v) => void save({ notifyChallengeInvites: v })}
+              testId="toggle-notify-challenge-invites"
+            />
+            <ToggleRow
+              label="Challenge updates"
+              sub="Accepted or completed shared challenges"
+              value={prefs?.notifyChallengeUpdates !== false}
+              onChange={(v) => void save({ notifyChallengeUpdates: v })}
+              testId="toggle-notify-challenge-updates"
+            />
+            <ToggleRow
+              label="Party invites"
+              sub="Invitations to join a party"
+              value={prefs?.notifyPartyInvites !== false}
+              onChange={(v) => void save({ notifyPartyInvites: v })}
+              testId="toggle-notify-party-invites"
+            />
+            <ToggleRow
+              label="Party challenge updates"
+              sub="Party joined and party challenge complete"
+              value={prefs?.notifyPartyUpdates !== false}
+              onChange={(v) => void save({ notifyPartyUpdates: v })}
+              testId="toggle-notify-party-updates"
+            />
+            <ToggleRow
+              label="Referral milestones"
+              sub="When a successful referral activates"
+              value={prefs?.notifyReferralMilestones !== false}
+              onChange={(v) => void save({ notifyReferralMilestones: v })}
+              testId="toggle-notify-referral-milestones"
+            />
+          </>
+        )}
+        <p className="text-[11px] text-muted-foreground px-1 pt-1">
+          Social alerts use the same local notification path as retention reminders — not a push for every quest contribution.
+        </p>
+      </SettingsGroup>
+    </>
   );
 }
 

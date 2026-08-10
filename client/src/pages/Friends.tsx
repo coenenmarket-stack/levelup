@@ -19,7 +19,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import {
   ensureInviteCode,
-  redeemInviteCode,
   respondToFriendRequest,
   removeFriend,
   cheerActivity,
@@ -34,6 +33,7 @@ import {
   type PublicProfile,
   type ActivityItem,
 } from "@/lib/friends";
+import { blockUser, redeemReferralCode } from "@/lib/social/api";
 import { isFacebookConfigured } from "@/lib/socialConfig";
 import { AVATAR_CLASSES } from "@shared/schema";
 import type { Category } from "@/lib/types";
@@ -134,14 +134,18 @@ export default function FriendsPage() {
   const { data: myCats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
 
   const redeemMut = useMutation({
-    mutationFn: (code: string) => redeemInviteCode(code),
+    mutationFn: (code: string) => redeemReferralCode(code),
     onSuccess: (data) => {
       toast({
         title: data.status === "accepted" ? "You're friends!" : "Request sent",
-        description: data.status === "accepted" ? "You can compare progress now." : "They'll need to accept your request.",
+        description:
+          data.status === "accepted"
+            ? "Complete a quest to activate their referral."
+            : "They'll need to accept. Your first quest activates the referral.",
       });
       setCodeInput("");
       qc.invalidateQueries({ queryKey: ["friendships", uid] });
+      qc.invalidateQueries({ queryKey: ["my-referrals", uid] });
     },
     onError: (e: any) => toast({ title: "Couldn't add friend", description: e?.message ?? String(e), variant: "destructive" }),
   });
@@ -162,6 +166,17 @@ export default function FriendsPage() {
       qc.invalidateQueries({ queryKey: ["friendships", uid] });
       toast({ title: "Friend removed" });
     },
+  });
+
+  const blockMut = useMutation({
+    mutationFn: (friendUid: string) => blockUser(friendUid),
+    onSuccess: () => {
+      setSelectedFriend(null);
+      qc.invalidateQueries({ queryKey: ["friendships", uid] });
+      toast({ title: "User blocked", description: "They can't send friend requests or invites." });
+    },
+    onError: (e: any) =>
+      toast({ title: "Couldn't block", description: e?.message ?? String(e), variant: "destructive" }),
   });
 
   const cheerMut = useMutation({
@@ -233,7 +248,12 @@ export default function FriendsPage() {
         friend={selected}
         onBack={() => setSelectedFriend(null)}
         onRemove={() => removeMut.mutate(selected.uid)}
-        removing={removeMut.isPending}
+        onBlock={() => {
+          if (window.confirm(`Block ${selected.name}? They won't be able to invite you.`)) {
+            blockMut.mutate(selected.uid);
+          }
+        }}
+        removing={removeMut.isPending || blockMut.isPending}
       />
     );
   }
@@ -246,7 +266,14 @@ export default function FriendsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">Friends</h1>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          Share invite codes, cheer each other on, and compare skill progress.
+          Share invite codes, cheer each other on, and compare skill progress.{" "}
+          <Link href="/invite" className="underline text-primary">
+            Referral details
+          </Link>
+          {" · "}
+          <Link href="/social" className="underline text-primary">
+            Challenges & parties
+          </Link>
         </p>
       </div>
 
@@ -290,7 +317,7 @@ export default function FriendsPage() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Friends enter your code below. Facebook friend-find comes later — codes work everywhere.
+          Friends enter your code below. A referral becomes successful after they join and complete their first quest.
         </p>
       </section>
 
@@ -512,6 +539,7 @@ function FriendCompare({
   friend,
   onBack,
   onRemove,
+  onBlock,
   removing,
 }: {
   me: ReturnType<typeof useGame>["character"];
@@ -519,6 +547,7 @@ function FriendCompare({
   friend: PublicProfile;
   onBack: () => void;
   onRemove: () => void;
+  onBlock: () => void;
   removing: boolean;
 }) {
   const myLevels = Object.fromEntries(myCats.map((c) => [c.key, c.level ?? 1]));
@@ -586,11 +615,11 @@ function FriendCompare({
         })}
       </section>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {me && (
           <button
             type="button"
-            className="flex-1 py-2.5 rounded-xl bg-secondary font-semibold hover-elevate flex items-center justify-center gap-2"
+            className="flex-1 min-w-[10rem] py-2.5 rounded-xl bg-secondary font-semibold hover-elevate flex items-center justify-center gap-2"
             onClick={async () => {
               try {
                 await shareText(
@@ -612,7 +641,20 @@ function FriendCompare({
         >
           Remove
         </button>
+        <button
+          type="button"
+          disabled={removing}
+          onClick={onBlock}
+          className="px-4 py-2.5 rounded-xl text-destructive font-semibold hover-elevate border border-destructive/30"
+          data-testid="button-block-friend"
+        >
+          Block
+        </button>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        Remove hides the friendship. Block also stops new requests, challenge invites, and party invites.
+        Neither deletes quest history.
+      </p>
     </div>
   );
 }

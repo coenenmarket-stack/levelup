@@ -30,6 +30,8 @@ export type PublicProfile = {
   facebookId?: string | null;
   /** Up to 3 unlocked achievement keys for friends view */
   showcaseAchievements?: string[];
+  /** Opt-in to friend/party weekly leaderboards (default false) */
+  leaderboardOptIn?: boolean;
   updatedAt?: string;
 };
 
@@ -56,43 +58,64 @@ export const INVITE_WEB_BASE = "https://level-up-life-73702.web.app";
 export const INVITE_SCHEME_PREFIX = "com.coenenmarket.leveluplife://invite";
 
 export function inviteLinkForCode(code: string): string {
-  return `${INVITE_WEB_BASE}/#/friends?code=${encodeURIComponent(code)}`;
+  return `${INVITE_WEB_BASE}/#/invite?code=${encodeURIComponent(code)}`;
 }
 
 export async function syncPublicProfileLocal(
   uid: string,
   character: Character,
   categories: Category[],
-  opts?: { showLifeGoal?: boolean; inviteCode?: string | null },
+  opts?: {
+    showLifeGoal?: boolean;
+    inviteCode?: string | null;
+    showLevelToFriends?: boolean;
+    showStreakToFriends?: boolean;
+    showSkillsToFriends?: boolean;
+    showShowcaseAchievements?: boolean;
+    leaderboardOptIn?: boolean;
+  },
 ) {
   const categoryLevels: Record<string, number> = {};
   for (const c of categories) categoryLevels[c.key] = c.level ?? 1;
   const showLifeGoal = opts?.showLifeGoal !== false;
+  const showLevel = opts?.showLevelToFriends !== false;
+  const showStreak = opts?.showStreakToFriends !== false;
+  const showSkills = opts?.showSkillsToFriends !== false;
+  const showShowcase = opts?.showShowcaseAchievements !== false;
   const existing = await getDoc(doc(db, "publicProfiles", uid));
   const prev = existing.exists() ? (existing.data() as any) : {};
   let showcaseAchievements: string[] = prev.showcaseAchievements ?? [];
-  try {
-    const { topUnlockedAchievementKeys } = await import("./achievements");
-    showcaseAchievements = await topUnlockedAchievementKeys(uid, 3);
-  } catch {
-    /* keep previous */
+  if (showShowcase) {
+    try {
+      const { topUnlockedAchievementKeys } = await import("./achievements");
+      showcaseAchievements = await topUnlockedAchievementKeys(uid, 3);
+    } catch {
+      /* keep previous */
+    }
+  } else {
+    showcaseAchievements = [];
   }
   const payload = {
     name: character.name,
     photoURL: character.photoURL ?? null,
     avatar: character.avatar ?? null,
-    level: character.level ?? 1,
-    title: character.title ?? null,
-    currentStreak: character.currentStreak ?? 0,
+    level: showLevel ? (character.level ?? 1) : 1,
+    title: showLevel ? (character.title ?? null) : null,
+    currentStreak: showStreak ? (character.currentStreak ?? 0) : 0,
     legacyScore: character.legacyScore ?? 0,
-    categoryLevels,
+    categoryLevels: showSkills ? categoryLevels : {},
     lifeGoal: showLifeGoal ? (character.lifeGoal ?? null) : null,
     showLifeGoal,
     inviteCode: opts?.inviteCode ?? prev.inviteCode ?? null,
     facebookId: prev.facebookId ?? null,
     showcaseAchievements,
+    leaderboardOptIn: opts?.leaderboardOptIn === true || prev.leaderboardOptIn === true,
     updatedAt: new Date().toISOString(),
   };
+  // Explicit false from opts wins
+  if (opts?.leaderboardOptIn !== undefined) {
+    (payload as any).leaderboardOptIn = opts.leaderboardOptIn === true;
+  }
   await setDoc(doc(db, "publicProfiles", uid), payload, { merge: true });
   return { uid, ...payload } as PublicProfile;
 }

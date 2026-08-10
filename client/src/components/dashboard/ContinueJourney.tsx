@@ -9,6 +9,8 @@ const LINKS = [
   { href: "/quests", label: "Quests", icon: Swords, testId: "journey-quests" },
   { href: "/side-hustles", label: "Hustles", icon: Briefcase, testId: "journey-hustles" },
   { href: "/friends", label: "Friends", icon: Users, testId: "journey-friends" },
+  { href: "/social", label: "Social", icon: Users, testId: "journey-social" },
+  { href: "/invite", label: "Invite", icon: Users, testId: "journey-invite" },
   { href: "/character", label: "Hero", icon: User, testId: "journey-hero" },
   { href: "/achievements", label: "Badges", icon: Trophy, testId: "journey-achievements" },
   { href: "/stats", label: "Progress", icon: BarChart3, testId: "journey-stats" },

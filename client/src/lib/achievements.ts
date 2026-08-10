@@ -88,6 +88,18 @@ export const ACHIEVEMENT_TEMPLATES: AchievementTemplate[] = [
   { key: "level-10", name: "Seasoned Adventurer", description: "Reach level 10", icon: "⚔️", rarity: "rare", category: "hero", target: 10 },
   { key: "level-25", name: "Champion", description: "Reach level 25", icon: "👑", rarity: "epic", category: "hero", target: 25 },
   { key: "level-50", name: "Legend", description: "Reach level 50", icon: "🏆", rarity: "legendary", category: "hero", target: 50 },
+
+  // Social (Phase 4) — cosmetic
+  { key: "first-friend", name: "First Friend", description: "Accept or add your first friend", icon: "👋", rarity: "common", category: "social", target: 1 },
+  { key: "accountability-partner", name: "Accountability Partner", description: "Have 3 accepted friends", icon: "🤝", rarity: "rare", category: "social", target: 3 },
+  { key: "first-shared-challenge", name: "First Shared Challenge", description: "Complete a shared friend challenge", icon: "🎯", rarity: "common", category: "social", target: 1 },
+  { key: "five-shared-challenges", name: "Challenge Duo", description: "Complete 5 shared challenges", icon: "🏅", rarity: "rare", category: "social", target: 5 },
+  { key: "party-founder", name: "Party Founder", description: "Create a party", icon: "🚩", rarity: "common", category: "social", target: 1 },
+  { key: "team-player", name: "Team Player", description: "Complete a party challenge", icon: "🧱", rarity: "rare", category: "social", target: 1 },
+  { key: "referral-first", name: "First Referral", description: "Activate your first successful referral", icon: "🌱", rarity: "common", category: "social", target: 1 },
+  { key: "referral-builder", name: "Referral Builder", description: "Activate 3 successful referrals", icon: "🌿", rarity: "rare", category: "social", target: 3 },
+  { key: "referral-advocate", name: "Referral Advocate", description: "Activate 5 successful referrals", icon: "🌳", rarity: "epic", category: "social", target: 5 },
+  { key: "referral-legend", name: "Referral Legend", description: "Activate 10 successful referrals", icon: "🏆", rarity: "rare", category: "social", target: 10 },
 ];
 
 const SKILL_KEYS = ["health", "wealth", "career", "family", "mindset"] as const;
@@ -135,6 +147,14 @@ export type EvalContext = {
   allComps: any[];
   character: any;
   categoryLevels: Record<string, number>;
+  /** Phase 4 social counters (optional — defaults to 0) */
+  social?: {
+    friendCount?: number;
+    sharedChallengesCompleted?: number;
+    partiesCreated?: number;
+    partyChallengesCompleted?: number;
+    referralsActivated?: number;
+  };
 };
 
 export function progressForAchievement(key: string, ctx: EvalContext): number {
@@ -220,6 +240,21 @@ export function progressForAchievement(key: string, ctx: EvalContext): number {
     case "level-25":
     case "level-50":
       return ctx.character.level ?? 1;
+    case "first-friend":
+    case "accountability-partner":
+      return ctx.social?.friendCount ?? 0;
+    case "first-shared-challenge":
+    case "five-shared-challenges":
+      return ctx.social?.sharedChallengesCompleted ?? 0;
+    case "party-founder":
+      return ctx.social?.partiesCreated ?? 0;
+    case "team-player":
+      return ctx.social?.partyChallengesCompleted ?? 0;
+    case "referral-first":
+    case "referral-builder":
+    case "referral-advocate":
+    case "referral-legend":
+      return ctx.social?.referralsActivated ?? 0;
     default:
       return 0;
   }

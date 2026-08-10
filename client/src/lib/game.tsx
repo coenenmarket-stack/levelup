@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { XPFloats, type XPFloat } from "@/components/XPGainToast";
 import { LevelUpOverlay } from "@/components/LevelUpOverlay";
 import { postProgressActivity, syncPublicProfileLocal } from "./friends";
+import { activateReferralAfterQuest } from "./social/api";
 import { useAuth } from "./auth";
 
 type DailyPack = { quests: Quest[]; cached?: boolean; fallback?: boolean };
@@ -93,7 +94,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/weekly-challenges"] });
       qc.invalidateQueries({ queryKey: ["friend-activity"] });
 
-      // Friends activity + public profile (best-effort)
+      // Friends activity + public profile + referral activation (best-effort)
       const uid = me?.id ? String(me.id) : "";
       if (uid) {
         const category = context?.questCategory;
@@ -101,6 +102,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (result.leveledUp) {
           void postProgressActivity({ type: "levelUp", level: result.newLevel });
         }
+        // Successful referral = account linked + first qualifying quest
+        void activateReferralAfterQuest(String(_questId));
         try {
           const cats = qc.getQueryData<Category[]>(["/api/categories"]) ?? [];
           await syncPublicProfileLocal(uid, result.character, cats, {

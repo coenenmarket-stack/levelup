@@ -25,6 +25,7 @@ import { StreakStatusStrip } from "@/components/dashboard/StreakStatusStrip";
 import { QUEST_CATALOG } from "@/lib/questCatalog";
 import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePrompt";
 import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
+import { SocialHomeCard } from "@/components/SocialHomeCard";
 import { readPersonalization } from "@/lib/personalization/store";
 import {
   DEFAULT_PERSONALIZATION,
@@ -338,6 +339,9 @@ export default function Dashboard() {
       <div id="weekly-challenges">
         <WeeklyChallengesCard />
       </div>
+
+      {/* At most one social growth card */}
+      {me?.id ? <SocialHomeCard uid={String(me.id)} /> : null}
 
       {/* More to do */}
       <MoreToDoStrip />

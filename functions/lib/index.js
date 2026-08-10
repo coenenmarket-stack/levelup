@@ -6,7 +6,7 @@
 // achievements, and reward.redeemed. All those mutations flow through these
 // callable functions, which use the Admin SDK to bypass rules.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.findFacebookFriends = exports.linkFacebookAccount = exports.claimNativeFacebookSession = exports.createNativeFacebookSession = exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.requestFriendByUid = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
+exports.refreshPartyChallengeProgress = exports.startPartyChallenge = exports.renameParty = exports.kickPartyMember = exports.leaveParty = exports.respondPartyInvite = exports.inviteToParty = exports.createParty = exports.refreshSharedChallengeProgress = exports.respondSharedChallenge = exports.inviteSharedChallenge = exports.unblockUser = exports.blockUser = exports.activateReferral = exports.redeemReferralCode = exports.findFacebookFriends = exports.linkFacebookAccount = exports.claimNativeFacebookSession = exports.createNativeFacebookSession = exports.cheerActivity = exports.shareGoalToFriends = exports.postProgressActivity = exports.removeFriend = exports.respondToFriendRequest = exports.requestFriendByUid = exports.redeemInviteCode = exports.ensureInviteCode = exports.claimNativeGoogleSession = exports.completeNativeGoogleAuth = exports.createNativeGoogleSession = exports.generateQuests = exports.aiCoach = exports.redeemReward = exports.completeQuest = exports.finalizeOnboarding = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const app_1 = require("firebase-admin/app");
@@ -1093,7 +1093,19 @@ exports.redeemInviteCode = (0, https_1.onCall)({ region: "us-central1" }, async 
         throw new https_1.HttpsError("invalid-argument", "You can't friend yourself");
     return createOrAcceptFriendship(uid, targetUid);
 });
+async function isBlockedEitherWay(a, b) {
+    const idAb = `${a}__${b}`;
+    const idBa = `${b}__${a}`;
+    const [x, y] = await Promise.all([db.doc(`blocks/${idAb}`).get(), db.doc(`blocks/${idBa}`).get()]);
+    return x.exists || y.exists;
+}
 async function createOrAcceptFriendship(uid, targetUid) {
+    if (!targetUid || uid === targetUid) {
+        throw new https_1.HttpsError("invalid-argument", "You can't friend yourself");
+    }
+    if (await isBlockedEitherWay(uid, targetUid)) {
+        throw new https_1.HttpsError("permission-denied", "Unable to connect with this user");
+    }
     const id = friendshipId(uid, targetUid);
     const ref = db.doc(`friendships/${id}`);
     const snap = await ref.get();
@@ -1108,6 +1120,7 @@ async function createOrAcceptFriendship(uid, targetUid) {
             });
             return { status: "accepted", friendshipId: id };
         }
+        // Duplicate outgoing/incoming pending — do not create a second doc
         if (data.status === "pending")
             return { status: "pending", friendshipId: id };
     }
@@ -1150,6 +1163,11 @@ exports.respondToFriendRequest = (0, https_1.onCall)({ region: "us-central1" }, 
         throw new https_1.HttpsError("failed-precondition", "Request is not pending");
     if (data.requestedBy === uid)
         throw new https_1.HttpsError("failed-precondition", "Wait for them to respond");
+    const otherUid = data.uids.find((u) => u !== uid);
+    if (otherUid && (await isBlockedEitherWay(uid, otherUid))) {
+        await ref.delete();
+        throw new https_1.HttpsError("permission-denied", "Unable to connect with this user");
+    }
     if (action === "decline") {
         await ref.delete();
         return { status: "declined" };
@@ -1416,4 +1434,21 @@ exports.findFacebookFriends = (0, https_1.onCall)({ region: "us-central1" }, asy
     }
     return { matches, facebookFriendCount: friends.length };
 });
+// Phase 4 social growth — server-authoritative transitions (deploy later)
+var social_1 = require("./social");
+Object.defineProperty(exports, "redeemReferralCode", { enumerable: true, get: function () { return social_1.redeemReferralCode; } });
+Object.defineProperty(exports, "activateReferral", { enumerable: true, get: function () { return social_1.activateReferral; } });
+Object.defineProperty(exports, "blockUser", { enumerable: true, get: function () { return social_1.blockUser; } });
+Object.defineProperty(exports, "unblockUser", { enumerable: true, get: function () { return social_1.unblockUser; } });
+Object.defineProperty(exports, "inviteSharedChallenge", { enumerable: true, get: function () { return social_1.inviteSharedChallenge; } });
+Object.defineProperty(exports, "respondSharedChallenge", { enumerable: true, get: function () { return social_1.respondSharedChallenge; } });
+Object.defineProperty(exports, "refreshSharedChallengeProgress", { enumerable: true, get: function () { return social_1.refreshSharedChallengeProgress; } });
+Object.defineProperty(exports, "createParty", { enumerable: true, get: function () { return social_1.createParty; } });
+Object.defineProperty(exports, "inviteToParty", { enumerable: true, get: function () { return social_1.inviteToParty; } });
+Object.defineProperty(exports, "respondPartyInvite", { enumerable: true, get: function () { return social_1.respondPartyInvite; } });
+Object.defineProperty(exports, "leaveParty", { enumerable: true, get: function () { return social_1.leaveParty; } });
+Object.defineProperty(exports, "kickPartyMember", { enumerable: true, get: function () { return social_1.kickPartyMember; } });
+Object.defineProperty(exports, "renameParty", { enumerable: true, get: function () { return social_1.renameParty; } });
+Object.defineProperty(exports, "startPartyChallenge", { enumerable: true, get: function () { return social_1.startPartyChallenge; } });
+Object.defineProperty(exports, "refreshPartyChallengeProgress", { enumerable: true, get: function () { return social_1.refreshPartyChallengeProgress; } });
 //# sourceMappingURL=index.js.map

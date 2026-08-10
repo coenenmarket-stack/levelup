@@ -238,6 +238,14 @@ export async function writeSocialUserPrefs(uid: string, patch: Partial<SocialUse
     { ...patch, updatedAt: new Date().toISOString() },
     { merge: true },
   );
+  // Mirror leaderboard opt-in onto publicProfiles for friend ranking (allowlisted)
+  if (patch.leaderboardOptIn !== undefined) {
+    await setDoc(
+      doc(db, "publicProfiles", uid),
+      { leaderboardOptIn: patch.leaderboardOptIn === true, updatedAt: new Date().toISOString() },
+      { merge: true },
+    );
+  }
 }
 
 export async function loadSocialActivity(uid: string) {

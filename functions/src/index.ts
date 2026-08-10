@@ -1157,7 +1157,21 @@ export const redeemInviteCode = onCall({ region: "us-central1" }, async (req) =>
   return createOrAcceptFriendship(uid, targetUid);
 });
 
+async function isBlockedEitherWay(a: string, b: string): Promise<boolean> {
+  const idAb = `${a}__${b}`;
+  const idBa = `${b}__${a}`;
+  const [x, y] = await Promise.all([db.doc(`blocks/${idAb}`).get(), db.doc(`blocks/${idBa}`).get()]);
+  return x.exists || y.exists;
+}
+
 async function createOrAcceptFriendship(uid: string, targetUid: string) {
+  if (!targetUid || uid === targetUid) {
+    throw new HttpsError("invalid-argument", "You can't friend yourself");
+  }
+  if (await isBlockedEitherWay(uid, targetUid)) {
+    throw new HttpsError("permission-denied", "Unable to connect with this user");
+  }
+
   const id = friendshipId(uid, targetUid);
   const ref = db.doc(`friendships/${id}`);
   const snap = await ref.get();
@@ -1171,6 +1185,7 @@ async function createOrAcceptFriendship(uid: string, targetUid: string) {
       });
       return { status: "accepted", friendshipId: id };
     }
+    // Duplicate outgoing/incoming pending — do not create a second doc
     if (data.status === "pending") return { status: "pending", friendshipId: id };
   }
 
@@ -1209,6 +1224,12 @@ export const respondToFriendRequest = onCall({ region: "us-central1" }, async (r
   }
   if (data.status !== "pending") throw new HttpsError("failed-precondition", "Request is not pending");
   if (data.requestedBy === uid) throw new HttpsError("failed-precondition", "Wait for them to respond");
+
+  const otherUid = (data.uids as string[]).find((u) => u !== uid);
+  if (otherUid && (await isBlockedEitherWay(uid, otherUid))) {
+    await ref.delete();
+    throw new HttpsError("permission-denied", "Unable to connect with this user");
+  }
 
   if (action === "decline") {
     await ref.delete();
@@ -1497,3 +1518,22 @@ export const findFacebookFriends = onCall({ region: "us-central1" }, async (req)
 
   return { matches, facebookFriendCount: friends.length };
 });
+
+// Phase 4 social growth — server-authoritative transitions (deploy later)
+export {
+  redeemReferralCode,
+  activateReferral,
+  blockUser,
+  unblockUser,
+  inviteSharedChallenge,
+  respondSharedChallenge,
+  refreshSharedChallengeProgress,
+  createParty,
+  inviteToParty,
+  respondPartyInvite,
+  leaveParty,
+  kickPartyMember,
+  renameParty,
+  startPartyChallenge,
+  refreshPartyChallengeProgress,
+} from "./social";

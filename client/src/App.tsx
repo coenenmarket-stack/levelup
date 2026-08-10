@@ -28,6 +28,9 @@ import Mindset from "./pages/Mindset";
 import Certifications from "./pages/Certifications";
 import SideHustles from "./pages/SideHustles";
 import Friends from "./pages/Friends";
+import Invite from "./pages/Invite";
+import SocialHub from "./pages/SocialHub";
+import Leaderboard from "./pages/Leaderboard";
 import Personalize from "./pages/Personalize";
 import Explore from "./pages/Explore";
 import Goals from "./pages/Goals";
@@ -117,6 +120,9 @@ function GatedApp() {
           <Route path="/certifications" component={Certifications} />
           <Route path="/side-hustles" component={SideHustles} />
           <Route path="/friends" component={Friends} />
+          <Route path="/invite" component={Invite} />
+          <Route path="/social" component={SocialHub} />
+          <Route path="/leaderboard" component={Leaderboard} />
           <Route path="/personalize" component={Personalize} />
           <Route path="/explore" component={Explore} />
           <Route path="/goals" component={Goals} />

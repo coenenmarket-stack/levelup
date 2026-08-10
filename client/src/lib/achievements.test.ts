@@ -3,9 +3,21 @@ import assert from "node:assert/strict";
 import { ACHIEVEMENT_TEMPLATES, progressForAchievement } from "./achievements.ts";
 
 describe("achievements", () => {
-  it("has 30–40 templates", () => {
+  it("has 30–55 templates including social set", () => {
     assert.ok(ACHIEVEMENT_TEMPLATES.length >= 30);
-    assert.ok(ACHIEVEMENT_TEMPLATES.length <= 40);
+    assert.ok(ACHIEVEMENT_TEMPLATES.length <= 55);
+    const social = ACHIEVEMENT_TEMPLATES.filter((t) => t.category === "social");
+    assert.ok(social.length >= 8 && social.length <= 12);
+  });
+
+  it("computes social referral progress from context", () => {
+    const progress = progressForAchievement("referral-builder", {
+      allComps: [],
+      character: { longestStreak: 1, level: 1 },
+      categoryLevels: { health: 1, wealth: 1, career: 1, family: 1, mindset: 1 },
+      social: { referralsActivated: 3 },
+    });
+    assert.equal(progress, 3);
   });
 
   it("has unique keys", () => {

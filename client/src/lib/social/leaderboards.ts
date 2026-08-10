@@ -35,6 +35,26 @@ export function mergeLeaderboardPrivacy(
   return { ...DEFAULT_LEADERBOARD_PRIVACY, ...(raw ?? {}) };
 }
 
+/** Strip friend-visible fields according to privacy prefs (viewer-safe). */
+export function filterProfileForPrivacy<T extends {
+  level?: number;
+  title?: string | null;
+  currentStreak?: number;
+  categoryLevels?: Record<string, number>;
+  showcaseAchievements?: string[];
+}>(profile: T, privacy: LeaderboardPrivacy): T {
+  return {
+    ...profile,
+    level: privacy.showLevelToFriends ? profile.level : undefined,
+    title: privacy.showLevelToFriends ? profile.title : null,
+    currentStreak: privacy.showStreakToFriends ? profile.currentStreak : 0,
+    categoryLevels: privacy.showSkillsToFriends ? profile.categoryLevels : {},
+    showcaseAchievements: privacy.showShowcaseAchievements
+      ? profile.showcaseAchievements
+      : [],
+  };
+}
+
 export function rankLeaderboard(
   rows: Array<{ uid: string; name: string; value: number; optIn: boolean }>,
 ): LeaderboardEntry[] {

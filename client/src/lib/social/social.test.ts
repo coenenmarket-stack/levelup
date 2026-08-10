@@ -36,6 +36,7 @@ import {
 } from "./activity.ts";
 import {
   DEFAULT_LEADERBOARD_PRIVACY,
+  filterProfileForPrivacy,
   mergeLeaderboardPrivacy,
   rankLeaderboard,
   weeklyQuestStats,
@@ -369,6 +370,29 @@ describe("activity + leaderboards + privacy + notifications", () => {
     );
     assert.deepEqual(stats.a, { quests: 2, xp: 15 });
     assert.equal(stats.b, undefined);
+  });
+
+  it("filters profile fields by privacy prefs", () => {
+    const filtered = filterProfileForPrivacy(
+      {
+        level: 12,
+        title: "Champion",
+        currentStreak: 9,
+        categoryLevels: { health: 3 },
+        showcaseAchievements: ["first-quest"],
+      },
+      {
+        ...DEFAULT_LEADERBOARD_PRIVACY,
+        showLevelToFriends: false,
+        showStreakToFriends: false,
+        showSkillsToFriends: false,
+        showShowcaseAchievements: false,
+      },
+    );
+    assert.equal(filtered.level, undefined);
+    assert.equal(filtered.currentStreak, 0);
+    assert.deepEqual(filtered.categoryLevels, {});
+    assert.deepEqual(filtered.showcaseAchievements, []);
   });
 
   it("gates social notifications behind master + category toggles", () => {
