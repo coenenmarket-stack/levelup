@@ -30,7 +30,7 @@ Based on merged Phase 4.5 tip `22605b6` on `cursor/app-store-launch-assets`.
 
 - Achievement/goal milestone auto-push (prefs reserved only)
 - Goal-reminder / social-digest email jobs
-- Rewards `/shop` promotion into primary nav
+- Promoting rewards shop into primary nav
 - Deleting unused CF `generateQuests`
 - Broad privacy rewrite of `publicProfiles` readability
 - Full offline sync
@@ -41,6 +41,10 @@ Based on merged Phase 4.5 tip `22605b6` on `cursor/app-store-launch-assets`.
 - Home social + push cards gated
 - Continue Journey social tiles removed; Hero → `/profile`
 - Settings nested: Account, Personalization, Notifications·Progress, Privacy/Social/Email (when flagged), App, Security
-- Invite hidden dev activate control removed
+- Invite hidden-dev activate control removed
 - FeatureUnavailable on direct routes to gated features
+- Deep links respect `LAUNCH_FLAGS` (stale party/friend links → Home)
+- `/shop` gated via `rewardsShopEnabled`
+- Social achievements hidden from Achievements UI while social flags off
 - Stale DEPLOY.md Coach “Coming Soon” corrected
+- Codemagic optional `GOOGLE_SERVICE_INFO_PLIST_BASE64` inject + `REQUIRE_GOOGLE_SERVICE_PLIST`
