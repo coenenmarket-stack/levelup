@@ -36,7 +36,8 @@ service cloud.firestore {
 
       // Sub-collections under characters/{uid}
       // Includes Phase 3 private personalization data (owner-only):
-      //   personalization/prefs, goals/*, careerProgress/*, recFeedback/*, coachMemory/state
+      //   personalization/prefs, goals/*, careerProgress/*, recFeedback/*,
+      //   coachMemory/state, guideProgress/{certifications|sideHustles}
       // These must NEVER be mirrored into publicProfiles.
       match /{subcollection}/{docId} {
         allow read, write: if isOwner(uid);

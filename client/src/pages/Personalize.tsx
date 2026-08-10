@@ -156,7 +156,7 @@ export default function PersonalizePage() {
     if (!me?.id || !primaryGoal) return;
     setBusy(true);
     try {
-      const topPath = planPreview.path?.item.id ?? existingPathId;
+      const topPath = existingPathId; // only keep a path the user already started/saved
       await writePersonalization(String(me.id), {
         ...draftPrefs,
         primaryGoal,

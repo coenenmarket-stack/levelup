@@ -26,12 +26,20 @@ import { QUEST_CATALOG } from "@/lib/questCatalog";
 import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePrompt";
 import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
 import { readPersonalization } from "@/lib/personalization/store";
-import { DEFAULT_PERSONALIZATION, type PersonalizationPrefs } from "@/lib/personalization/types";
+import {
+  DEFAULT_PERSONALIZATION,
+  shouldShowSoftPersonalizePrompt,
+  type PersonalizationPrefs,
+} from "@/lib/personalization/types";
 import { pickRecommendedNextAction } from "@/lib/personalization/nextAction";
 import { getStreakStatus } from "@/lib/streak";
 import { getCareerPath } from "@/lib/careerPaths";
 import { listGoals } from "@/lib/personalization/goals";
 import { primaryGoalLabel, rankAll, scoreQuest } from "@/lib/personalization/engine";
+import { getCertificationById } from "@/lib/certifications";
+import { getSideHustleById } from "@/lib/sideHustles";
+import { readCertProgress, readHustleProgress } from "@/lib/personalization/guideProgress";
+import type { WeeklyChallengeState } from "@/lib/weeklyChallenges";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
@@ -44,15 +52,29 @@ export default function Dashboard() {
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
   const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
   const [hasOpenGoals, setHasOpenGoals] = useState(false);
+  const [activeCertId, setActiveCertId] = useState<string | null>(null);
+  const [activeHustleId, setActiveHustleId] = useState<string | null>(null);
 
   const { data: pack, isLoading: packLoading } = useQuery<DailyPack>({
     queryKey: ["/api/daily-pack"],
   });
+  const { data: weekly } = useQuery<WeeklyChallengeState>({
+    queryKey: ["/api/weekly-challenges"],
+  });
 
   useEffect(() => {
     if (!me?.id) return;
-    void readPersonalization(String(me.id)).then(setPrefs);
-    void listGoals(String(me.id)).then((g) => setHasOpenGoals(g.some((x) => x.status === "active")));
+    const uid = String(me.id);
+    void readPersonalization(uid).then(setPrefs);
+    void listGoals(uid).then((g) => setHasOpenGoals(g.some((x) => x.status === "active")));
+    void readCertProgress(uid).then((p) => {
+      const id = p.started.find((x) => !p.completed.includes(x)) ?? null;
+      setActiveCertId(id);
+    });
+    void readHustleProgress(uid).then((p) => {
+      const id = p.started.find((x) => !p.completed.includes(x)) ?? null;
+      setActiveHustleId(id);
+    });
   }, [me?.id]);
 
   const refreshMut = useMutation({
@@ -93,20 +115,24 @@ export default function Dashboard() {
     : null;
 
   const activePath = prefs.activeCareerPathId ? getCareerPath(prefs.activeCareerPathId) : null;
+  const activeCert = activeCertId ? getCertificationById(activeCertId) : null;
+  const activeHustle = activeHustleId ? getSideHustleById(activeHustleId) : null;
+  const weeklyClaimable = (weekly?.challenges ?? []).filter((c) => c.completed && !c.rewardClaimed).length;
+  const showSoftPrompt = shouldShowSoftPersonalizePrompt(prefs);
 
   const nextAction = pickRecommendedNextAction({
     prefs,
     dailyIncomplete: packProgress.remaining,
     dailyTotal: packProgress.total,
-    weeklyClaimable: 0,
+    weeklyClaimable,
     streakBroken: streak.broken && (character.currentStreak ?? 0) === 0 && !!character.lastCompletionDate,
     topQuest,
     activeCareerPathId: activePath?.id ?? null,
     careerPathTitle: activePath?.title ?? null,
-    activeCertId: null,
-    activeCertTitle: null,
-    activeHustleId: null,
-    activeHustleTitle: null,
+    activeCertId: activeCert?.id ?? null,
+    activeCertTitle: activeCert?.name ?? null,
+    activeHustleId: activeHustle?.id ?? null,
+    activeHustleTitle: activeHustle?.name ?? null,
     hasOpenGoals,
   });
 
@@ -169,7 +195,8 @@ export default function Dashboard() {
         />
       </motion.section>
 
-      <RecommendedNextActionCard action={nextAction} />
+      {/* Avoid competing personalize CTAs when soft prompt is visible */}
+      {!showSoftPrompt && <RecommendedNextActionCard action={nextAction} />}
 
       {/* 2. Today's Mission */}
       <TodaysMissionCard

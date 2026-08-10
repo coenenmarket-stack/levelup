@@ -21,6 +21,13 @@ import {
   type CertCost,
 } from "@/lib/certifications";
 import { useAuth } from "@/lib/auth";
+import {
+  mergeCertProgress,
+  readCertProgress,
+  toggleId,
+  writeCertProgress,
+  type CertGuideProgress,
+} from "@/lib/personalization/guideProgress";
 
 const COST_COLORS: Record<CertCost, string> = {
   Free: "text-primary",
@@ -29,61 +36,28 @@ const COST_COLORS: Record<CertCost, string> = {
   $$$: "text-destructive",
 };
 
-type CertProgress = {
-  saved: string[];
-  goals: string[];
-  started: string[];
-  completed: string[];
-};
-
-const emptyProgress = (): CertProgress => ({
-  saved: [],
-  goals: [],
-  started: [],
-  completed: [],
-});
-
-function storageKey(uid: string) {
-  return `levelup_cert_progress_v1__${uid}`;
-}
-
-function loadProgress(uid: string): CertProgress {
-  try {
-    const raw = localStorage.getItem(storageKey(uid));
-    if (!raw) return emptyProgress();
-    const parsed = JSON.parse(raw) as Partial<CertProgress>;
-    return {
-      saved: parsed.saved ?? [],
-      goals: parsed.goals ?? [],
-      started: parsed.started ?? [],
-      completed: parsed.completed ?? [],
-    };
-  } catch {
-    return emptyProgress();
-  }
-}
-
-function saveProgress(uid: string, progress: CertProgress) {
-  try {
-    localStorage.setItem(storageKey(uid), JSON.stringify(progress));
-  } catch {
-    // private mode
-  }
-}
-
-function toggleId(list: string[], id: string): string[] {
-  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-}
+type CertProgress = CertGuideProgress;
 
 export default function CertificationsPage() {
   const { me } = useAuth();
   const uid = me?.id ? String(me.id) : "anon";
   const [filter, setFilter] = useState<CertCategory | "All" | "Saved" | "Goals">("All");
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<CertProgress>(() => loadProgress(uid));
+  const [progress, setProgress] = useState<CertProgress>(() => mergeCertProgress(null));
 
   useEffect(() => {
-    setProgress(loadProgress(uid));
+    let cancelled = false;
+    void (async () => {
+      if (uid === "anon") {
+        setProgress(mergeCertProgress(null));
+        return;
+      }
+      const next = await readCertProgress(uid);
+      if (!cancelled) setProgress(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [uid]);
 
   useEffect(() => {
@@ -97,7 +71,7 @@ export default function CertificationsPage() {
 
   const update = (next: CertProgress) => {
     setProgress(next);
-    saveProgress(uid, next);
+    if (uid !== "anon") void writeCertProgress(uid, next);
   };
 
   const visible = useMemo(() => {

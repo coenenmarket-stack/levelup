@@ -31,12 +31,27 @@ function memoryRef(uid: string) {
 }
 
 export function mergeCoachMemory(raw: Partial<CoachMemory> | null | undefined): CoachMemory {
+  const clip = (s: string | null | undefined, max: number): string | null => {
+    if (!s) return null;
+    const t = String(s).trim();
+    if (!t) return null;
+    return t.length > max ? t.slice(0, max) : t;
+  };
   return {
     ...DEFAULT_COACH_MEMORY,
     ...(raw ?? {}),
-    coachingGoals: Array.isArray(raw?.coachingGoals) ? raw!.coachingGoals.slice(0, 8) : [],
-    preferences: Array.isArray(raw?.preferences) ? raw!.preferences.slice(0, 12) : [],
-    acceptedPlanIds: Array.isArray(raw?.acceptedPlanIds) ? raw!.acceptedPlanIds.slice(0, 20) : [],
+    coachingGoals: Array.isArray(raw?.coachingGoals)
+      ? raw!.coachingGoals.map((g) => String(g).slice(0, 120)).filter(Boolean).slice(0, 8)
+      : [],
+    preferences: Array.isArray(raw?.preferences)
+      ? raw!.preferences.map((g) => String(g).slice(0, 120)).filter(Boolean).slice(0, 12)
+      : [],
+    acceptedPlanIds: Array.isArray(raw?.acceptedPlanIds)
+      ? raw!.acceptedPlanIds.map(String).filter(Boolean).slice(0, 20)
+      : [],
+    currentFocus: clip(raw?.currentFocus ?? null, 160),
+    activePlan: clip(raw?.activePlan ?? null, 280),
+    lastRecommendation: clip(raw?.lastRecommendation ?? null, 280),
   };
 }
 

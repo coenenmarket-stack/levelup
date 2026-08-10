@@ -564,12 +564,25 @@ async function buildCoachContext(uid: string, char: any, personalizationHint?: s
 
   const certHints = CLASS_CERT_HINTS[char.className] ?? CLASS_CERT_HINTS.professional;
   const prefs = prefsSnap.exists ? (prefsSnap.data() as any) : {};
-  const memory = memorySnap.exists ? (memorySnap.data() as any) : {};
+  const memoryRaw = memorySnap.exists ? (memorySnap.data() as any) : {};
+  const memory = {
+    currentFocus: String(memoryRaw.currentFocus ?? "").slice(0, 160) || null,
+    coachingGoals: Array.isArray(memoryRaw.coachingGoals)
+      ? memoryRaw.coachingGoals.map((g: any) => String(g).slice(0, 120)).slice(0, 8)
+      : [],
+    preferences: Array.isArray(memoryRaw.preferences)
+      ? memoryRaw.preferences.map((g: any) => String(g).slice(0, 120)).slice(0, 12)
+      : [],
+    activePlan: String(memoryRaw.activePlan ?? "").slice(0, 280) || null,
+    lastRecommendation: String(memoryRaw.lastRecommendation ?? "").slice(0, 280) || null,
+  };
   const userGoals = goalsSnap.docs
     .map(d => d.data() as any)
     .filter(g => g.status === "active")
     .slice(0, 6)
-    .map(g => `${g.title} (${g.type})`);
+    .map(g => `${String(g.title ?? "").slice(0, 80)} (${g.type})`);
+
+  const hint = personalizationHint ? String(personalizationHint).slice(0, 1500) : "";
 
   // Never include email or account credentials in coach context.
   return `${COACH_PERSONA}
@@ -611,7 +624,7 @@ STRUCTURED COACH MEMORY (not full chat history):
 - Active plan: ${memory.activePlan ?? "none"}
 - Last recommendation: ${memory.lastRecommendation ?? "none"}
 
-${personalizationHint ? `CLIENT HINT (non-sensitive):\n${personalizationHint}` : ""}`;
+${hint ? `CLIENT HINT (non-sensitive):\n${hint}` : ""}`;
 }
 
 export const aiCoach = onCall({ region: "us-central1", secrets: [GEMINI_API_KEY] }, async (req) => {

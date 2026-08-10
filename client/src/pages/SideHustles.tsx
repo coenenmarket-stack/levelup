@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Briefcase,
   ArrowLeft,
@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   Swords,
   Sparkles,
+  Bookmark,
+  Play,
 } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -16,6 +18,15 @@ import {
   getSideHustleById,
   type SideHustle,
 } from "@/lib/sideHustles";
+import { useAuth } from "@/lib/auth";
+import {
+  mergeHustleProgress,
+  readHustleProgress,
+  toggleId,
+  writeHustleProgress,
+  type HustleGuideProgress,
+} from "@/lib/personalization/guideProgress";
+import { writeFeedback } from "@/lib/personalization/feedback";
 
 const COST_LABEL: Record<SideHustle["startupCost"], string> = {
   Free: "Free to start",
@@ -25,8 +36,23 @@ const COST_LABEL: Record<SideHustle["startupCost"], string> = {
 };
 
 export default function SideHustlesPage() {
+  const { me } = useAuth();
+  const uid = me?.id ? String(me.id) : "anon";
   const [filter, setFilter] = useState<SideHustle["category"] | "All">("All");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<HustleGuideProgress>(() => mergeHustleProgress(null));
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (uid === "anon") return;
+      const next = await readHustleProgress(uid);
+      if (!cancelled) setProgress(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
 
   const visible = useMemo(
     () => (filter === "All" ? SIDE_HUSTLES : SIDE_HUSTLES.filter((h) => h.category === filter)),
@@ -35,7 +61,38 @@ export default function SideHustlesPage() {
 
   const detail = detailId ? getSideHustleById(detailId) : null;
   if (detail) {
-    return <SideHustleDetail hustle={detail} onBack={() => setDetailId(null)} />;
+    return (
+      <SideHustleDetail
+        hustle={detail}
+        progress={progress}
+        onBack={() => setDetailId(null)}
+        onSave={async () => {
+          const next = mergeHustleProgress({
+            ...progress,
+            saved: toggleId(progress.saved, detail.id),
+          });
+          setProgress(next);
+          if (uid !== "anon") {
+            await writeHustleProgress(uid, next);
+            await writeFeedback(uid, { entityId: detail.id, entityType: "side_hustle", kind: "saved" });
+          }
+        }}
+        onStart={async () => {
+          const next = mergeHustleProgress({
+            ...progress,
+            started: Array.from(new Set([...progress.started, detail.id])),
+            saved: progress.saved.includes(detail.id)
+              ? progress.saved
+              : [...progress.saved, detail.id],
+          });
+          setProgress(next);
+          if (uid !== "anon") {
+            await writeHustleProgress(uid, next);
+            await writeFeedback(uid, { entityId: detail.id, entityType: "side_hustle", kind: "started" });
+          }
+        }}
+      />
+    );
   }
 
   return (
@@ -92,6 +149,9 @@ export default function SideHustlesPage() {
                   <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground border border-card-border rounded-md px-1.5 py-0.5">
                     {h.skillLevel}
                   </span>
+                  {progress.started.includes(h.id) && (
+                    <span className="text-[10px] uppercase tracking-wide text-accent">Started</span>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{h.tagline}</div>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -118,7 +178,21 @@ export default function SideHustlesPage() {
   );
 }
 
-function SideHustleDetail({ hustle, onBack }: { hustle: SideHustle; onBack: () => void }) {
+function SideHustleDetail({
+  hustle,
+  progress,
+  onBack,
+  onSave,
+  onStart,
+}: {
+  hustle: SideHustle;
+  progress: HustleGuideProgress;
+  onBack: () => void;
+  onSave: () => void;
+  onStart: () => void;
+}) {
+  const saved = progress.saved.includes(hustle.id);
+  const started = progress.started.includes(hustle.id);
   return (
     <div className="space-y-5" data-testid={`hustle-detail-${hustle.id}`}>
       <button
@@ -137,6 +211,25 @@ function SideHustleDetail({ hustle, onBack }: { hustle: SideHustle; onBack: () =
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight mt-1 leading-tight">{hustle.name}</h1>
         <p className="text-sm text-muted-foreground mt-1">{hustle.tagline}</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onStart}
+          className="rounded-xl bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold flex items-center gap-1.5 hover-elevate"
+          data-testid="button-hustle-start"
+        >
+          <Play className="w-4 h-4" /> {started ? "Started" : "Start"}
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          className="rounded-xl surface px-3 py-2 text-sm font-semibold flex items-center gap-1.5 hover-elevate"
+          data-testid="button-hustle-save"
+        >
+          <Bookmark className="w-4 h-4" /> {saved ? "Saved" : "Save"}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">

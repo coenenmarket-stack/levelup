@@ -13,7 +13,7 @@ export function RecommendedNextActionCard({ action }: { action: RecommendedNextA
       <p className="text-sm text-muted-foreground mt-1">{action.subtitle}</p>
       <p className="text-xs text-primary mt-2">{action.reason}</p>
       <Link
-        href={action.href.replace("/#", "/").startsWith("/") ? action.href.split("#")[0]! : action.href}
+        href={action.href}
         className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover-elevate rounded-lg px-2 py-1 -ml-2"
         data-testid="button-next-action"
       >

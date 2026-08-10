@@ -58,17 +58,19 @@ export async function upsertGoal(
 ): Promise<UserGoal> {
   const id = goal.id ?? `goal_${Date.now().toString(36)}`;
   const now = new Date().toISOString();
+  const title = String(goal.title).trim().slice(0, 120);
+  if (!title) throw new Error("Goal title required");
   const next: UserGoal = {
     id,
-    title: goal.title,
+    title,
     type: goal.type,
-    target: goal.target ?? null,
+    target: goal.target ? String(goal.target).slice(0, 160) : null,
     status: goal.status ?? "active",
     createdAt: goal.createdAt ?? now,
     updatedAt: now,
     targetDate: goal.targetDate ?? null,
     relatedEntityId: goal.relatedEntityId ?? null,
-    manualProgress: goal.manualProgress ?? 0,
+    manualProgress: Math.min(100, Math.max(0, goal.manualProgress ?? 0)),
   };
   await setDoc(doc(db, "characters", uid, "goals", id), next, { merge: true });
   return next;

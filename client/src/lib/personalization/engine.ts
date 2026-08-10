@@ -63,6 +63,41 @@ function pushReason(reasons: string[], text: string) {
   if (reasons.length < 3 && !reasons.includes(text)) reasons.push(text);
 }
 
+const ROLE_STOP = new Set([
+  "a", "an", "the", "and", "or", "of", "in", "to", "for", "at", "on", "my", "i",
+]);
+
+/** Normalize free-text role for fuzzy path matching (no exact-string fragility). */
+export function normalizeRoleText(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function roleTokens(input: string): string[] {
+  return normalizeRoleText(input)
+    .split(" ")
+    .filter((t) => t.length > 2 && !ROLE_STOP.has(t));
+}
+
+/** True when free-text role meaningfully overlaps a catalog role label. */
+export function rolesLooselyMatch(userRole: string, catalogRole: string): boolean {
+  const a = normalizeRoleText(userRole);
+  const b = normalizeRoleText(catalogRole);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const ta = new Set(roleTokens(a));
+  const tb = roleTokens(b);
+  if (ta.size === 0 || tb.length === 0) return false;
+  const overlap = tb.filter((t) => ta.has(t)).length;
+  if (overlap >= 2) return true;
+  if (overlap === 1 && (ta.size <= 2 || tb.length <= 2)) return true;
+  return false;
+}
+
 export function scoreQuest(
   quest: QuestCatalogItem,
   ctx: EngineContext,
@@ -239,18 +274,16 @@ export function scoreCareerPath(
   }
 
   if (prefs.targetRole) {
-    const t = prefs.targetRole.toLowerCase();
-    if (
-      path.targetRoles.some((r) => r.toLowerCase().includes(t) || t.includes(r.toLowerCase().split(" ")[0]))
-    ) {
+    const t = normalizeRoleText(prefs.targetRole);
+    if (path.targetRoles.some((r) => rolesLooselyMatch(t, r))) {
       score += 25;
       pushReason(reasons, "Aligned with the role you’re working toward.");
     }
   }
 
   if (prefs.currentRole) {
-    const c = prefs.currentRole.toLowerCase();
-    if (path.entryRoles.some((r) => r.toLowerCase().includes(c) || c.includes(r.toLowerCase().split(" ")[0]))) {
+    const c = normalizeRoleText(prefs.currentRole);
+    if (path.entryRoles.some((r) => rolesLooselyMatch(c, r))) {
       score += 18;
       pushReason(reasons, "Fits where you may be starting.");
     }

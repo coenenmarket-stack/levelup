@@ -1,6 +1,6 @@
 import type { ScoredRecommendation } from "./types";
 import type { PersonalizationPrefs } from "./types";
-import { shouldShowSoftPersonalizePrompt } from "./store";
+import { shouldShowSoftPersonalizePrompt } from "./types";
 import type { QuestCatalogItem } from "../questCatalog/types";
 
 export type NextActionKind =
@@ -73,7 +73,7 @@ export function pickRecommendedNextAction(input: NextActionInput): RecommendedNe
       kind: "finish_daily_quests",
       title: "Finish today’s quests",
       subtitle: `${input.dailyIncomplete} of ${input.dailyTotal} remaining`,
-      href: "/#daily-quests",
+      href: "/",
       reason: "Daily quests protect your streak and XP pace.",
       priority: 30,
     });
@@ -84,7 +84,7 @@ export function pickRecommendedNextAction(input: NextActionInput): RecommendedNe
       kind: "claim_weekly",
       title: "Claim weekly challenge XP",
       subtitle: `${input.weeklyClaimable} challenge${input.weeklyClaimable === 1 ? "" : "s"} ready`,
-      href: "/#weekly-challenges",
+      href: "/",
       reason: "You’ve already earned it — claim before the week rolls.",
       priority: 35,
     });
