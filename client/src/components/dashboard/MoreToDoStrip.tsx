@@ -6,7 +6,7 @@ import type { Quest } from "@/lib/types";
 import { useGame } from "@/lib/game";
 
 export function MoreToDoStrip() {
-  const { completeQuest, isCompleting } = useGame();
+  const { completeQuest, completingQuestId } = useGame();
   const practice = practiceForToday();
   const { data: quests } = useQuery<Quest[]>({ queryKey: ["/api/quests"] });
 
@@ -37,7 +37,7 @@ export function MoreToDoStrip() {
           <button
             type="button"
             data-testid="more-side-quest"
-            disabled={isCompleting}
+            disabled={completingQuestId === String(sideQuest.id)}
             onClick={() => completeQuest(sideQuest)}
             className="surface rounded-xl p-3.5 flex items-start gap-3 hover-elevate text-left disabled:opacity-60"
           >
@@ -46,7 +46,7 @@ export function MoreToDoStrip() {
             </div>
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Side quest</div>
-              <div className="font-semibold text-sm truncate">{sideQuest.title}</div>
+              <div className="font-semibold text-sm line-clamp-2">{sideQuest.title}</div>
               <div className="text-xs text-muted-foreground mt-0.5 capitalize">
                 {sideQuest.category} · +{sideQuest.xpReward} XP
               </div>
@@ -63,8 +63,8 @@ export function MoreToDoStrip() {
             </div>
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Side quest</div>
-              <div className="font-semibold text-sm">Browse quests</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Pick something extra for today</div>
+              <div className="font-semibold text-sm">Browse quest catalog</div>
+              <div className="text-xs text-muted-foreground mt-0.5">750 missions across 5 skills</div>
             </div>
           </Link>
         )}

@@ -313,7 +313,7 @@ async function patchCharacter(uid: string, body: any) {
 }
 
 async function createQuest(uid: string, body: any) {
-  const payload = {
+  const payload: Record<string, unknown> = {
     title: body.title,
     description: body.description ?? null,
     category: body.category,
@@ -323,6 +323,7 @@ async function createQuest(uid: string, body: any) {
     active: true,
     createdAt: new Date().toISOString(),
   };
+  if (body.catalogId) payload.catalogId = String(body.catalogId);
   const ref = await addDoc(collection(db, "characters", uid, "quests"), payload);
   return { id: ref.id, ...payload };
 }

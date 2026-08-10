@@ -9,7 +9,7 @@ import {
   GraduationCap,
   Briefcase,
   BookOpen,
-  Heart,
+  HelpCircle,
   Settings as SettingsIcon,
   Users,
   ChevronUp,
@@ -37,7 +37,7 @@ const menuItems = [
   { href: "/certifications", label: "Certifications", icon: GraduationCap, testId: "menu-certifications" },
   { href: "/side-hustles", label: "Side Hustles", icon: Briefcase, testId: "menu-side-hustles" },
   { href: "/mindset", label: "Mindset", icon: BookOpen, testId: "menu-mindset" },
-  { href: "/support", label: "Support Level Up Life", icon: Heart, testId: "menu-support" },
+  { href: "/support", label: "Help & Support", icon: HelpCircle, testId: "menu-support" },
   { href: "/settings", label: "Settings", icon: SettingsIcon, testId: "menu-settings" },
 ];
 

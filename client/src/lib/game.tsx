@@ -14,6 +14,7 @@ type GameCtx = {
   character: Character | undefined;
   completeQuest: (quest: Quest) => void;
   isCompleting: boolean;
+  completingQuestId: string | null;
 };
 const Ctx = createContext<GameCtx | null>(null);
 
@@ -123,8 +124,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       character,
-      completeQuest: (q) => completeMut.mutate(q.id),
+      completeQuest: (q) => {
+        if (completeMut.isPending) return;
+        if (q.completedToday) return;
+        completeMut.mutate(q.id);
+      },
       isCompleting: completeMut.isPending,
+      completingQuestId: completeMut.isPending && completeMut.variables != null
+        ? String(completeMut.variables)
+        : null,
     }}>
       {children}
       <XPFloats floats={floats} />

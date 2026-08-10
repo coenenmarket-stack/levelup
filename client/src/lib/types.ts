@@ -55,8 +55,8 @@ export type Category = {
 };
 
 export type Quest = {
-  id: number;
-  userId: number;
+  id: number | string;
+  userId?: number;
   title: string;
   description: string | null;
   category: string;
@@ -66,6 +66,7 @@ export type Quest = {
   active: boolean;
   createdAt: string;
   completedToday?: boolean;
+  catalogId?: string | null;
 };
 
 export type Achievement = {

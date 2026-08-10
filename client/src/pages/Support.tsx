@@ -1,95 +1,114 @@
-import { Heart, ExternalLink, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { HelpCircle, Mail, MessageCircle, BookOpen, Shield } from "lucide-react";
+import { Link } from "wouter";
 
-const CASHTAG = "Zcoenen";
-const CASHAPP_URL = `https://cash.app/$${CASHTAG}`;
+const FAQS = [
+  {
+    q: "Quest completion didn't save",
+    a: "Check your connection, then reopen Quests. Completions sync to your account when you're signed in. If a daily quest already shows complete for today, you can't earn XP for it again until tomorrow.",
+  },
+  {
+    q: "How do daily quests reset?",
+    a: "Daily quests reset at midnight in your local timezone. Side quests stay on your list until you complete them (once per day max for XP).",
+  },
+  {
+    q: "Where did my progress go?",
+    a: "Progress is tied to the account you signed in with. Confirm you're on the same email/provider. Signing in as a guest or different account starts a separate character.",
+  },
+  {
+    q: "How do I change my goals or class?",
+    a: "Open Settings from the menu (»»). Profile edits and preferences live there. Character stats update as you complete quests in each skill.",
+  },
+];
 
 export default function SupportPage() {
-  const [copied, setCopied] = useState(false);
-
-  const copyTag = async () => {
-    try {
-      await navigator.clipboard.writeText(`$${CASHTAG}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // silent fail — clipboard may be blocked
-    }
-  };
-
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">
-          Support Level Up Life
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Built by one person on coffee and late nights. If this app helped you level up your life, a tip keeps it free for everyone.
+        <div className="flex items-center gap-2">
+          <HelpCircle className="w-6 h-6 text-primary" strokeWidth={2.4} />
+          <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">
+            Help & Support
+          </h1>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">
+          Troubleshooting, how the game works, and ways to get unstuck.
         </p>
       </div>
 
-      <section className="surface rounded-2xl p-5 text-center space-y-4" data-testid="section-cashapp">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-accent/15 text-accent">
-          <Heart className="w-6 h-6" fill="currentColor" />
+      <section className="surface rounded-2xl p-4 space-y-3" data-testid="section-quick-links">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Quick links</div>
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            href="/quests"
+            className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
+            data-testid="link-help-quests"
+          >
+            <BookOpen className="w-4 h-4 text-primary" />
+            Quests
+          </Link>
+          <Link
+            href="/settings"
+            className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
+            data-testid="link-help-settings"
+          >
+            <Shield className="w-4 h-4 text-primary" />
+            Settings
+          </Link>
+          <Link
+            href="/coach"
+            className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
+            data-testid="link-help-coach"
+          >
+            <MessageCircle className="w-4 h-4 text-primary" />
+            AI Coach
+          </Link>
+          <Link
+            href="/mindset"
+            className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
+            data-testid="link-help-mindset"
+          >
+            <BookOpen className="w-4 h-4 text-accent" />
+            Mindset
+          </Link>
+        </div>
+      </section>
+
+      <section className="space-y-2.5" data-testid="section-faq">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground px-0.5">Common issues</div>
+        {FAQS.map((item) => (
+          <details
+            key={item.q}
+            className="surface rounded-2xl group"
+            data-testid={`faq-${item.q.slice(0, 24).replace(/\s+/g, "-").toLowerCase()}`}
+          >
+            <summary className="cursor-pointer list-none px-4 py-3.5 text-sm font-semibold flex items-center justify-between gap-3">
+              <span>{item.q}</span>
+              <span className="text-muted-foreground text-lg leading-none group-open:rotate-45 transition-transform">+</span>
+            </summary>
+            <p className="px-4 pb-4 text-sm text-muted-foreground leading-relaxed">{item.a}</p>
+          </details>
+        ))}
+      </section>
+
+      <section className="surface rounded-2xl p-5 space-y-3" data-testid="section-contact">
+        <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 text-primary">
+          <Mail className="w-5 h-5" />
         </div>
         <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Cash App</div>
-          <div className="mt-1 font-num font-extrabold text-3xl gold-text">${CASHTAG}</div>
+          <div className="text-sm font-bold">Still stuck?</div>
+          <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+            Email support with what you tried and your account email (no passwords). We use it only to help you recover progress.
+          </p>
         </div>
-
-        {/* QR code */}
-        <div className="mx-auto w-56 h-56 rounded-2xl bg-white p-3 shadow-lg" data-testid="qr-cashapp">
-          <img
-            src="/cashapp_qr.png"
-            alt={`Scan to send to $${CASHTAG} on Cash App`}
-            className="w-full h-full object-contain"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <a
-            href={CASHAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="link-open-cashapp"
-            className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover-elevate"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Open Cash App
-          </a>
-          <button
-            type="button"
-            onClick={copyTag}
-            data-testid="button-copy-cashtag"
-            className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary text-foreground font-semibold text-sm hover-elevate"
-          >
-            {copied ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied" : "Copy $tag"}
-          </button>
-        </div>
+        <a
+          href="mailto:hello@leveluplife.app?subject=Level%20Up%20Life%20Help"
+          data-testid="link-support-email"
+          className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover-elevate"
+        >
+          <Mail className="w-4 h-4" />
+          Email help
+        </a>
       </section>
-
-      <section className="surface rounded-2xl p-5 space-y-3" data-testid="section-why-support">
-        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Why support?</div>
-        <ul className="space-y-2 text-sm">
-          <li className="flex gap-2.5">
-            <span className="text-accent mt-0.5">»</span>
-            <span>Keeps the app free with no ads, no paywalls, no upsells.</span>
-          </li>
-          <li className="flex gap-2.5">
-            <span className="text-accent mt-0.5">»</span>
-            <span>Funds new content — quests, hubs, side hustle tracks, AI features.</span>
-          </li>
-          <li className="flex gap-2.5">
-            <span className="text-accent mt-0.5">»</span>
-            <span>One developer building this in public. Every tip means another late-night build session.</span>
-          </li>
-        </ul>
-      </section>
-
-      <p className="text-[11px] text-center text-muted-foreground px-4">
-        Tips are gifts, not purchases. No refunds, no rewards owed. Thank you for being part of the journey.
-      </p>
     </div>
   );
 }

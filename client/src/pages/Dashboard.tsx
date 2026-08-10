@@ -24,7 +24,7 @@ const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.m
 type DailyPack = { quests: Quest[]; cached?: boolean; allComplete?: boolean };
 
 export default function Dashboard() {
-  const { character, completeQuest, isCompleting } = useGame();
+  const { character, completeQuest, isCompleting, completingQuestId } = useGame();
   const { me } = useAuth();
   const qc = useQueryClient();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
@@ -158,7 +158,7 @@ export default function Dashboard() {
                   quest={q}
                   variant="active"
                   onComplete={() => completeQuest(q)}
-                  isCompleting={isCompleting}
+                  isCompleting={completingQuestId === String(q.id)}
                   interactive
                 />
               ))}
@@ -176,8 +176,6 @@ export default function Dashboard() {
                   key={q.id}
                   quest={q}
                   variant="completed"
-                  onCompleteAgain={!q.isDaily ? () => completeQuest(q) : undefined}
-                  isCompleting={isCompleting}
                 />
               ))}
             </QuestSection>

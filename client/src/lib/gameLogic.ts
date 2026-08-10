@@ -403,15 +403,14 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const quest: any = questSnap.data();
   const char: any = charSnap.data();
 
-  if (quest.isDaily) {
-    const dup = await getDocs(query(
-      collection(charRef, "completions"),
-      where("questId", "==", questId),
-      where("completionDate", "==", today),
-      limit(1),
-    ));
-    if (!dup.empty) throw new Error("Already completed today");
-  }
+  // Block same-day re-completion for ALL quests (daily and side) to prevent XP double-dip.
+  const dup = await getDocs(query(
+    collection(charRef, "completions"),
+    where("questId", "==", questId),
+    where("completionDate", "==", today),
+    limit(1),
+  ));
+  if (!dup.empty) throw new Error("Already completed today");
 
   // Append completion
   await addDoc(collection(charRef, "completions"), {
@@ -527,7 +526,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
     } else if (a.key === "first-workout" || a.key === "10-workouts" || a.key === "100-workouts") {
       progress = allComps.filter(c => c.category === "health").length;
     } else if (a.key === "save-100" || a.key === "save-1000" || a.key === "debt-crusher") {
-      progress = allComps.filter(c => c.category === "finance").length;
+      progress = allComps.filter(c => c.category === "finance" || c.category === "wealth").length;
     } else if (a.key === "first-cert") {
       progress = allComps.filter(c => c.category === "career" && c.difficulty === "hard").length;
     } else if (a.key === "first-promo") {

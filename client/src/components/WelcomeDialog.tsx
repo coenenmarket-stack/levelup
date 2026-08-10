@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
-import { Sparkles, Target, Trophy, Heart } from "lucide-react";
+import { Sparkles, Target, Trophy, GraduationCap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Logo } from "./Logo";
 
@@ -81,34 +80,24 @@ export function WelcomeDialog({ userId }: { userId: string }) {
             </li>
           </ul>
 
-          {/* Thank you / support note */}
-          <div className="rounded-xl border border-accent/30 bg-accent/5 px-3.5 py-3 flex items-start gap-2.5">
-            <Heart className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+          <div className="rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-3 flex items-start gap-2.5">
+            <GraduationCap className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <p className="text-xs leading-relaxed">
-              <b className="gold-text">Thanks for being here.</b> This app is built and run by one person.
-              If you're feeling generous, the <b>Support</b> tab has a tip jar — no pressure, every bit helps keep it free.
+              <b className="text-primary">Pro tip:</b> Browse Certifications and Side Hustles from the menu when you want a longer campaign beyond daily quests.
             </p>
           </div>
         </div>
 
         {/* Footer actions */}
-        <div className="px-6 pb-6 pt-1 grid grid-cols-2 gap-2.5">
+        <div className="px-6 pb-6 pt-1">
           <button
             type="button"
             onClick={dismiss}
             data-testid="button-welcome-dismiss"
-            className="surface-raised rounded-xl py-2.5 text-sm font-semibold hover-elevate active-elevate-2"
+            className="w-full rounded-xl py-2.5 text-sm font-semibold bg-primary text-primary-foreground hover-elevate active-elevate-2"
           >
             Start playing
           </button>
-          <Link
-            href="/support"
-            onClick={dismiss}
-            data-testid="link-welcome-support"
-            className="rounded-xl py-2.5 text-sm font-semibold text-center bg-gradient-to-br from-primary to-accent text-primary-foreground hover-elevate active-elevate-2 flex items-center justify-center gap-1.5"
-          >
-            <Heart className="w-3.5 h-3.5" /> Show support
-          </Link>
         </div>
       </DialogContent>
     </Dialog>
