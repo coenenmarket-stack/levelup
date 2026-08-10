@@ -4,6 +4,9 @@ import {
   type QuestCatalogCategory,
   type QuestCatalogItem,
 } from "./questCatalog";
+import type { PersonalizationPrefs } from "./personalization/types";
+import { DEFAULT_PERSONALIZATION } from "./personalization/types";
+import { personalizedDailySlots, scoreQuest } from "./personalization/engine";
 
 export type SkillKey = QuestCatalogCategory;
 
@@ -45,9 +48,10 @@ export function biasedSlotsFilling(
   keptCategories: SkillKey[],
   need: number,
   targetSize: number = DAILY_PACK_SIZE,
+  prefs?: PersonalizationPrefs | null,
 ): SkillKey[] {
   if (need <= 0) return [];
-  const remaining = biasedSkillSlots(catLevels, targetSize);
+  const remaining = resolveDailySlots(catLevels, prefs, targetSize);
   for (const k of keptCategories) {
     const i = remaining.indexOf(k);
     if (i >= 0) remaining.splice(i, 1);
@@ -78,15 +82,23 @@ function poolForCategory(category: SkillKey, preferDaily: boolean): QuestCatalog
 /**
  * Pick catalog items for skill slots. Deterministic from seed so the same
  * uid+day gets a stable pack; excludeIds avoid recent duplicates.
+ * When prefs are provided, ranks pool by personalization score within each slot.
  */
 export function pickCatalogForSlots(
   slots: SkillKey[],
   seed: string,
   excludeIds: Set<string> = new Set(),
+  opts?: {
+    prefs?: PersonalizationPrefs;
+    categoryLevels?: Record<string, number>;
+  },
 ): PackPick[] {
   const picked: PackPick[] = [];
   const used = new Set<string>(excludeIds);
   const base = hashStr(seed);
+  const prefs = opts?.prefs ?? DEFAULT_PERSONALIZATION;
+  const categoryLevels = opts?.categoryLevels ?? {};
+  const useScoring = !!opts?.prefs?.personalizationCompleted || !!opts?.prefs?.primaryGoal;
 
   slots.forEach((category, slotIndex) => {
     let pool = poolForCategory(category, true).filter((q) => !used.has(q.id));
@@ -96,8 +108,32 @@ export function pickCatalogForSlots(
     if (pool.length === 0) {
       pool = poolForCategory(category, false);
     }
-    const idx = pool.length ? (base + slotIndex * 97) % pool.length : 0;
-    const item = pool[idx] ?? QUEST_CATALOG.find((q) => q.category === category)!;
+
+    let item: QuestCatalogItem;
+    if (useScoring && pool.length > 0) {
+      const ranked = pool
+        .map((q) =>
+          scoreQuest(q, {
+            prefs,
+            categoryLevels,
+            recentCatalogIds: excludeIds,
+          }),
+        )
+        .sort(
+          (a, b) =>
+            b.score - a.score ||
+            a.item.id.localeCompare(b.item.id) ||
+            (base + slotIndex) % 7 - 3,
+        );
+      // Stable tie-break: among top 3 scores, pick by seed
+      const top = ranked.slice(0, Math.min(3, ranked.length));
+      const idx = top.length ? (base + slotIndex * 97) % top.length : 0;
+      item = top[idx]?.item ?? ranked[0]!.item;
+    } else {
+      const idx = pool.length ? (base + slotIndex * 97) % pool.length : 0;
+      item = pool[idx] ?? QUEST_CATALOG.find((q) => q.category === category)!;
+    }
+
     used.add(item.id);
     picked.push({
       catalogId: item.id,
@@ -110,6 +146,18 @@ export function pickCatalogForSlots(
   });
 
   return picked;
+}
+
+/** Skill slots with personalization when prefs exist; else weakest-skill bias. */
+export function resolveDailySlots(
+  catLevels: Record<string, number>,
+  prefs?: PersonalizationPrefs | null,
+  count: number = DAILY_PACK_SIZE,
+): SkillKey[] {
+  if (count !== DAILY_PACK_SIZE || !prefs?.primaryGoal) {
+    return biasedSkillSlots(catLevels, count);
+  }
+  return personalizedDailySlots(prefs, catLevels) as SkillKey[];
 }
 
 export function orderPackBySkill<T extends { category: string }>(quests: T[]): T[] {

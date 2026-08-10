@@ -21,16 +21,17 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import {
-  biasedSkillSlots,
   biasedSlotsFilling,
   DAILY_PACK_SIZE,
   orderPackBySkill,
   packQuestDocId,
   pickCatalogForSlots,
+  resolveDailySlots,
   type PackPick,
   type SkillKey,
 } from "./dailyPackAssign";
 import { candidateDayKeys, dayKeyLocal, dayKeyUtc } from "./dayKey";
+import { readPersonalization } from "./personalization/store";
 
 export type DailyPackQuest = {
   id: string;
@@ -183,7 +184,10 @@ export async function ensureCatalogDailyPack(
 
   const cacheDay = localDay; // new writes always use local day
   const cacheRef = doc(db, "characters", uid, "dailyPacks", cacheDay);
-  const catLevels = await readCategoryLevels(uid);
+  const [catLevels, prefs] = await Promise.all([
+    readCategoryLevels(uid),
+    readPersonalization(uid),
+  ]);
 
   let keptQuests: DailyPackQuest[] = [];
   let slots: SkillKey[] = [];
@@ -255,13 +259,17 @@ export async function ensureCatalogDailyPack(
       keptQuests.map((q) => q.category as SkillKey),
       need,
       targetSize,
+      prefs,
     );
   } else {
-    slots = biasedSkillSlots(catLevels, DAILY_PACK_SIZE);
+    slots = resolveDailySlots(catLevels, prefs, DAILY_PACK_SIZE);
   }
 
   const seed = `${uid}:${cacheDay}:${refresh ? "r" : "n"}:${keptQuests.map((q) => q.id).join(",")}`;
-  const picks = pickCatalogForSlots(slots, seed, exclude);
+  const picks = pickCatalogForSlots(slots, seed, exclude, {
+    prefs,
+    categoryLevels: catLevels,
+  });
   const newQuests = await persistPicks(uid, cacheDay, picks);
   const allQuests = orderPackBySkill([...keptQuests, ...newQuests]);
   const allQuestIds = allQuests.map((q) => q.id);

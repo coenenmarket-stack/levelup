@@ -510,7 +510,10 @@ export const redeemReward = onCall({ region: "us-central1" }, async (req) => {
 // aiCoach — Gemini-backed coaching reply (free tier: 1500 req/day on Flash)
 // ----------------------------------------------------------------------------
 
-const CoachSchema = z.object({ message: z.string().min(1).max(1000) });
+const CoachSchema = z.object({
+  message: z.string().min(1).max(1000),
+  personalizationHint: z.string().max(2000).optional(),
+});
 
 function parseGoals(char: any): string[] {
   try {
@@ -526,14 +529,17 @@ function weakestAndStrongest(categories: any[]): { weakest: any | null; stronges
   return { weakest: sorted[0], strongest: sorted[sorted.length - 1] };
 }
 
-async function buildCoachContext(uid: string, char: any): Promise<string> {
+async function buildCoachContext(uid: string, char: any, personalizationHint?: string): Promise<string> {
   const charRef = db.doc(`characters/${uid}`);
   const today = todayUtc();
 
-  const [catsSnap, compsSnap, questsSnap] = await Promise.all([
+  const [catsSnap, compsSnap, questsSnap, prefsSnap, memorySnap, goalsSnap] = await Promise.all([
     charRef.collection("categories").get(),
     charRef.collection("completions").orderBy("completedAt", "desc").limit(10).get(),
     charRef.collection("quests").where("active", "==", true).get(),
+    charRef.collection("personalization").doc("prefs").get(),
+    charRef.collection("coachMemory").doc("state").get(),
+    charRef.collection("goals").limit(12).get(),
   ]);
 
   const categories = catsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
@@ -557,8 +563,19 @@ async function buildCoachContext(uid: string, char: any): Promise<string> {
     .map(q => `${q.title} (${q.category}, ${q.difficulty}, +${q.xpReward} XP)`);
 
   const certHints = CLASS_CERT_HINTS[char.className] ?? CLASS_CERT_HINTS.professional;
+  const prefs = prefsSnap.exists ? (prefsSnap.data() as any) : {};
+  const memory = memorySnap.exists ? (memorySnap.data() as any) : {};
+  const userGoals = goalsSnap.docs
+    .map(d => d.data() as any)
+    .filter(g => g.status === "active")
+    .slice(0, 6)
+    .map(g => `${g.title} (${g.type})`);
 
+  // Never include email or account credentials in coach context.
   return `${COACH_PERSONA}
+
+PRIVACY: Do not invent private facts. Do not claim access to email, passwords, or friend-private data.
+Do NOT award XP, change levels, complete quests, or mutate progression — only recommend actions the app can open.
 
 HERO SHEET:
 - Name: ${char.name}
@@ -567,12 +584,34 @@ HERO SHEET:
 - Streak: ${char.currentStreak ?? 0} days (longest: ${char.longestStreak ?? 0})
 - Life goal: ${char.lifeGoal || "Become the best version of myself"}
 - Personal goals: ${goals.join("; ") || "none set"}
+- Tracked goals: ${userGoals.join("; ") || "none"}
 - Life stats: STR ${char.strength ?? 10}, INT ${char.intelligence ?? 10}, DIS ${char.discipline ?? 10}, WLT ${char.wealth ?? 10}, HP ${char.health ?? 10}, REL ${char.relationships ?? 10}
 - Weakest category: ${weakest ? `${weakest.name} (Lv.${weakest.level}, ${weakest.rank})` : "unknown"}
 - Strongest category: ${strongest ? `${strongest.name} (Lv.${strongest.level}, ${strongest.rank})` : "unknown"}
 - Recent completions: ${recentCompleted.join("; ") || "none yet"}
 - Active quests today: ${activeQuests.join("; ") || "none pending"}
-- Career/cert paths to mention if relevant: ${certHints.join("; ")}`;
+- Career/cert paths to mention if relevant: ${certHints.join("; ")}
+
+PERSONALIZATION (private):
+- Primary goal: ${prefs.primaryGoal ?? "not set"}
+- Secondary goals: ${(prefs.secondaryGoals || []).join(", ") || "none"}
+- Daily time commitment: ${prefs.dailyTimeCommitment ?? "15"} minutes
+- Challenge intensity: ${prefs.challengeIntensity ?? "balanced"}
+- Career interests: ${(prefs.careerInterests || []).join(", ") || "none"}
+- Income interest: ${prefs.incomeInterest ?? "not_now"}
+- Certification interest: ${prefs.certificationInterest ?? "maybe"}
+- Active career path id: ${prefs.activeCareerPathId ?? "none"}
+- Current role (optional): ${prefs.currentRole ?? "not set"}
+- Target role (optional): ${prefs.targetRole ?? "not set"}
+
+STRUCTURED COACH MEMORY (not full chat history):
+- Current focus: ${memory.currentFocus ?? "not set"}
+- Coaching goals: ${(memory.coachingGoals || []).join("; ") || "none"}
+- Preferences: ${(memory.preferences || []).join("; ") || "none"}
+- Active plan: ${memory.activePlan ?? "none"}
+- Last recommendation: ${memory.lastRecommendation ?? "none"}
+
+${personalizationHint ? `CLIENT HINT (non-sensitive):\n${personalizationHint}` : ""}`;
 }
 
 export const aiCoach = onCall({ region: "us-central1", secrets: [GEMINI_API_KEY] }, async (req) => {
@@ -591,7 +630,7 @@ export const aiCoach = onCall({ region: "us-central1", secrets: [GEMINI_API_KEY]
 
   try {
     const client = new GoogleGenerativeAI(key);
-    const systemInstruction = await buildCoachContext(uid, char);
+    const systemInstruction = await buildCoachContext(uid, char, parsed.data.personalizationHint);
     const model = client.getGenerativeModel({
       model: "gemini-2.5-flash",
       systemInstruction,

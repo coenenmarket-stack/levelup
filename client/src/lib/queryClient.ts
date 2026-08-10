@@ -410,17 +410,20 @@ async function callGenerateQuests(uid: string, refresh: boolean) {
   return { ...pack, quests: merged };
 }
 
-async function callCoach(message: string) {
+async function callCoach(message: string, personalizationHint?: string) {
   // Calls the deployed `aiCoach` Cloud Function (Gemini-backed).
   // Fails soft so the UI never crashes if the function is unavailable.
   try {
     const { httpsCallable } = await import("firebase/functions");
     const { functions } = await import("./firebase");
-    const fn = httpsCallable<{ message: string }, { reply: string; fallback?: boolean }>(
-      functions,
-      "aiCoach",
-    );
-    const res = await fn({ message });
+    const fn = httpsCallable<
+      { message: string; personalizationHint?: string },
+      { reply: string; fallback?: boolean }
+    >(functions, "aiCoach");
+    const res = await fn({
+      message,
+      ...(personalizationHint ? { personalizationHint } : {}),
+    });
     return res.data;
   } catch (e: any) {
     console.error("aiCoach call failed", e);
@@ -466,7 +469,9 @@ async function route(method: string, url: string, body: any): Promise<any> {
     if (cleanUrl === "/api/onboarding/finalize") return callFinalizeOnboarding(uid, body);
     if (cleanUrl === "/api/quests") return createQuest(uid, body);
     if (cleanUrl === "/api/rewards") return createReward(uid, body);
-    if (cleanUrl === "/api/coach") return callCoach(body?.message ?? "");
+    if (cleanUrl === "/api/coach") {
+      return callCoach(body?.message ?? "", body?.personalizationHint);
+    }
     if (cleanUrl === "/api/daily-pack") return callGenerateQuests(uid, !!body?.refresh);
     if (cleanUrl === "/api/weekly-challenges/claim") {
       return claimWeeklyChallengeReward(uid, String(body?.challengeKey ?? ""));

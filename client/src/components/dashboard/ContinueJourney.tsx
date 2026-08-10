@@ -1,7 +1,10 @@
 import { Link } from "wouter";
-import { Sparkles, Swords, User, Trophy, BarChart3, GraduationCap, Users, Briefcase } from "lucide-react";
+import { Sparkles, Swords, User, Trophy, BarChart3, GraduationCap, Users, Briefcase, Compass, Map, Target } from "lucide-react";
 
 const LINKS = [
+  { href: "/explore", label: "Explore", icon: Compass, testId: "journey-explore" },
+  { href: "/career-paths", label: "Paths", icon: Map, testId: "journey-paths" },
+  { href: "/goals", label: "Goals", icon: Target, testId: "journey-goals" },
   { href: "/coach", label: "AI Coach", icon: Sparkles, testId: "journey-coach" },
   { href: "/quests", label: "Quests", icon: Swords, testId: "journey-quests" },
   { href: "/side-hustles", label: "Hustles", icon: Briefcase, testId: "journey-hustles" },

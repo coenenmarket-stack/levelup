@@ -14,6 +14,9 @@ import {
   Users,
   ChevronUp,
   X,
+  Compass,
+  Map,
+  Target,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { ReactNode, useEffect, useState } from "react";
@@ -29,6 +32,9 @@ const bottomNav = [
 const menuItems = [
   { href: "/", label: "Home", icon: Home, testId: "menu-home" },
   { href: "/quests", label: "Quests", icon: Swords, testId: "menu-quests" },
+  { href: "/explore", label: "Explore", icon: Compass, testId: "menu-explore" },
+  { href: "/career-paths", label: "Career Paths", icon: Map, testId: "menu-career-paths" },
+  { href: "/goals", label: "Goals", icon: Target, testId: "menu-goals" },
   { href: "/coach", label: "AI Coach", icon: Sparkles, testId: "menu-coach" },
   { href: "/profile", label: "Hero / Profile", icon: User, testId: "menu-profile" },
   { href: "/friends", label: "Friends", icon: Users, testId: "menu-friends" },
@@ -37,6 +43,7 @@ const menuItems = [
   { href: "/certifications", label: "Certifications", icon: GraduationCap, testId: "menu-certifications" },
   { href: "/side-hustles", label: "Side Hustles", icon: Briefcase, testId: "menu-side-hustles" },
   { href: "/mindset", label: "Mindset", icon: BookOpen, testId: "menu-mindset" },
+  { href: "/personalize", label: "Personalize Plan", icon: Sparkles, testId: "menu-personalize" },
   { href: "/support", label: "Help & Support", icon: HelpCircle, testId: "menu-support" },
   { href: "/settings", label: "Settings", icon: SettingsIcon, testId: "menu-settings" },
 ];

@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Flame, RefreshCw, Loader2, Sparkles } from "lucide-react";
 import { useGame } from "@/lib/game";
@@ -20,6 +22,16 @@ import { MoreToDoStrip } from "@/components/dashboard/MoreToDoStrip";
 import { ContinueJourney } from "@/components/dashboard/ContinueJourney";
 import { WeeklyChallengesCard } from "@/components/dashboard/WeeklyChallengesCard";
 import { StreakStatusStrip } from "@/components/dashboard/StreakStatusStrip";
+import { QUEST_CATALOG } from "@/lib/questCatalog";
+import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePrompt";
+import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
+import { readPersonalization } from "@/lib/personalization/store";
+import { DEFAULT_PERSONALIZATION, type PersonalizationPrefs } from "@/lib/personalization/types";
+import { pickRecommendedNextAction } from "@/lib/personalization/nextAction";
+import { getStreakStatus } from "@/lib/streak";
+import { getCareerPath } from "@/lib/careerPaths";
+import { listGoals } from "@/lib/personalization/goals";
+import { primaryGoalLabel, rankAll, scoreQuest } from "@/lib/personalization/engine";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
@@ -30,10 +42,18 @@ export default function Dashboard() {
   const { me } = useAuth();
   const qc = useQueryClient();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
+  const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
+  const [hasOpenGoals, setHasOpenGoals] = useState(false);
 
   const { data: pack, isLoading: packLoading } = useQuery<DailyPack>({
     queryKey: ["/api/daily-pack"],
   });
+
+  useEffect(() => {
+    if (!me?.id) return;
+    void readPersonalization(String(me.id)).then(setPrefs);
+    void listGoals(String(me.id)).then((g) => setHasOpenGoals(g.some((x) => x.status === "active")));
+  }, [me?.id]);
 
   const refreshMut = useMutation({
     mutationFn: async () => {
@@ -46,6 +66,14 @@ export default function Dashboard() {
     },
   });
 
+  const levels = useMemo(() => {
+    const out: Record<string, number> = { health: 2, wealth: 2, career: 2, family: 2, mindset: 2 };
+    for (const c of cats ?? []) {
+      if (c.key) out[c.key] = c.level ?? 1;
+    }
+    return out;
+  }, [cats]);
+
   if (!character) return <DashboardSkeleton />;
 
   const packQuests: Quest[] = (pack?.quests ?? []) as Quest[];
@@ -54,10 +82,45 @@ export default function Dashboard() {
   const weakest = getWeakestCategory(cats ?? []);
   const mission = getTodaysMission(packActive, pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0));
   const focus = getTodaysFocus(weakest, character);
+  const streak = getStreakStatus({
+    currentStreak: character.currentStreak,
+    longestStreak: character.longestStreak,
+    lastCompletionDate: character.lastCompletionDate,
+  });
+
+  const topQuest = prefs.personalizationCompleted
+    ? rankAll(QUEST_CATALOG, scoreQuest, { prefs, categoryLevels: levels }, 1)[0] ?? null
+    : null;
+
+  const activePath = prefs.activeCareerPathId ? getCareerPath(prefs.activeCareerPathId) : null;
+
+  const nextAction = pickRecommendedNextAction({
+    prefs,
+    dailyIncomplete: packProgress.remaining,
+    dailyTotal: packProgress.total,
+    weeklyClaimable: 0,
+    streakBroken: streak.broken && (character.currentStreak ?? 0) === 0 && !!character.lastCompletionDate,
+    topQuest,
+    activeCareerPathId: activePath?.id ?? null,
+    careerPathTitle: activePath?.title ?? null,
+    activeCertId: null,
+    activeCertTitle: null,
+    activeHustleId: null,
+    activeHustleTitle: null,
+    hasOpenGoals,
+  });
 
   return (
     <div className="space-y-4">
       {me?.id && <WelcomeDialog userId={String(me.id)} />}
+
+      {me?.id && (
+        <SoftPersonalizePrompt
+          uid={String(me.id)}
+          prefs={prefs}
+          onDismissed={setPrefs}
+        />
+      )}
 
       {/* 1. Hero / Level card */}
       <motion.section
@@ -78,6 +141,11 @@ export default function Dashboard() {
               <span className="font-num text-3xl font-extrabold gold-text leading-none" data-testid="text-level">{character.level}</span>
             </div>
             {character.title && <div className="text-[11px] text-accent mt-0.5" data-testid="text-title">{character.title}</div>}
+            {prefs.primaryGoal && (
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Focus: {primaryGoalLabel(prefs.primaryGoal)}
+              </div>
+            )}
           </div>
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Streak</div>
@@ -101,6 +169,8 @@ export default function Dashboard() {
         />
       </motion.section>
 
+      <RecommendedNextActionCard action={nextAction} />
+
       {/* 2. Today's Mission */}
       <TodaysMissionCard
         mission={mission}
@@ -111,10 +181,24 @@ export default function Dashboard() {
       {/* 3. Today's Focus */}
       <TodaysFocusCard title={focus.title} body={focus.body} />
 
+      {activePath && (
+        <Link
+          href={`/career-paths/${activePath.id}`}
+          className="block surface rounded-xl px-4 py-3 hover-elevate"
+          data-testid="card-current-path"
+        >
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Current path</div>
+          <div className="font-semibold mt-0.5">{activePath.title}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{activePath.typicalDirection}</div>
+        </Link>
+      )}
+
       {/* Daily pack: progress + active + completed */}
-      <section className="space-y-3" data-testid="section-todays-quests">
+      <section className="space-y-3" id="daily-quests" data-testid="section-todays-quests">
         <div className="flex items-baseline justify-between px-0.5">
-          <h2 className="text-base font-bold tracking-tight">Daily Missions</h2>
+          <h2 className="text-base font-bold tracking-tight">
+            {prefs.personalizationCompleted ? "Today’s Personalized Quests" : "Daily Missions"}
+          </h2>
           <button
             onClick={() => refreshMut.mutate()}
             disabled={refreshMut.isPending || pack?.allComplete}
@@ -145,7 +229,7 @@ export default function Dashboard() {
             <Sparkles className="w-7 h-7 text-accent mx-auto mb-2" />
             <div className="font-semibold">Ready for today&apos;s missions</div>
             <div className="text-sm text-muted-foreground mt-1">
-              Three focused quests from the catalog, biased toward your weakest skills.
+              Three focused quests from the catalog, weighted toward your goals and weakest skills.
             </div>
             <button
               type="button"
@@ -224,7 +308,9 @@ export default function Dashboard() {
       </section>
 
       {/* Weekly challenges */}
-      <WeeklyChallengesCard />
+      <div id="weekly-challenges">
+        <WeeklyChallengesCard />
+      </div>
 
       {/* More to do */}
       <MoreToDoStrip />

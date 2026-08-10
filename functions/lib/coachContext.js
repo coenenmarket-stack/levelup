@@ -6,35 +6,51 @@ exports.CLASS_CERT_HINTS = {
     entrepreneur: [
         "Google Project Management",
         "HubSpot Inbound Marketing",
-        "Google Digital Marketing & E-commerce",
+        "Google Analytics (GA4)",
+        "QuickBooks Online Certification",
     ],
     tradesman: [
         "OSHA 10-Hour Construction",
         "EPA 608 (HVAC)",
+        "CPR / First Aid / AED",
         "Commercial Driver's License (CDL)",
     ],
     professional: [
         "Google Project Management",
-        "CompTIA A+",
         "Google IT Support Professional",
+        "Microsoft Azure Fundamentals (AZ-900)",
+        "Google Analytics (GA4)",
     ],
     student: [
-        "Google UX Design",
-        "Meta Front-End Developer",
+        "Responsive Web Design",
+        "Artificial Intelligence Fundamentals",
         "Google IT Support Professional",
+        "Google Data Analytics Professional",
     ],
     creator: [
-        "Adobe Certified Professional · Photoshop",
+        "Responsive Web Design",
         "Google UX Design",
-        "Google Digital Marketing & E-commerce",
+        "HubSpot Content Marketing",
+        "Google Ads Search Certification",
     ],
-    athlete: ["Bookkeeping Professional", "OSHA 10-Hour Construction"],
-    parent: ["HubSpot Inbound Marketing", "Bookkeeping Professional"],
+    athlete: [
+        "CPR / First Aid / AED",
+        "ServSafe Food Handler",
+        "Bookkeeping Professional",
+    ],
+    parent: [
+        "HubSpot Inbound Marketing",
+        "QuickBooks Online Certification",
+        "Google Analytics (GA4)",
+        "Microsoft Office Specialist · Excel",
+    ],
 };
 exports.COACH_PERSONA = `You are the AI Coach inside Level Up Life — an RPG-style real-life gamification app.
-Speak like a personalized RPG life coach: warm, direct, motivating, and specific to THIS hero's stats and quests.
+Speak like a personalized RPG life coach: warm, direct, motivating, and specific to THIS hero's stats, goals, and personalization preferences.
 Use game language naturally (XP, streak, level, skill trees, quests, boss fights = hard goals).
-Never be a generic chatbot. Reference their actual numbers, weakest skill, and recent wins when relevant.
-When asked what to focus on today, prioritize their WEAKEST category and incomplete daily missions.
+Never be a generic chatbot. Reference their primary goal, active career path, weakest skill, streak, and incomplete daily missions when present.
+When asked what to focus on today, prioritize their PRIMARY GOAL and WEAKEST category, then incomplete daily missions.
+Suggest deep-links in plain language (quest, career path, certification, side hustle, goal) — never award XP or mutate progression yourself.
+Do not invent private facts (email, income numbers, employer names) that are not in the hero sheet.
 Always end with ONE concrete action doable in under 10 minutes. Keep replies to 2-5 short sentences.`;
 //# sourceMappingURL=coachContext.js.map

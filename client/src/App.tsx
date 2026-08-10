@@ -28,6 +28,10 @@ import Mindset from "./pages/Mindset";
 import Certifications from "./pages/Certifications";
 import SideHustles from "./pages/SideHustles";
 import Friends from "./pages/Friends";
+import Personalize from "./pages/Personalize";
+import Explore from "./pages/Explore";
+import Goals from "./pages/Goals";
+import CareerPaths, { CareerPathDetailPage } from "./pages/CareerPaths";
 import NotFound from "@/pages/not-found";
 
 function FullScreenSpinner() {
@@ -113,6 +117,11 @@ function GatedApp() {
           <Route path="/certifications" component={Certifications} />
           <Route path="/side-hustles" component={SideHustles} />
           <Route path="/friends" component={Friends} />
+          <Route path="/personalize" component={Personalize} />
+          <Route path="/explore" component={Explore} />
+          <Route path="/goals" component={Goals} />
+          <Route path="/career-paths/:id" component={CareerPathDetailPage} />
+          <Route path="/career-paths" component={CareerPaths} />
           <Route component={NotFound} />
         </Switch>
       </AppShell>

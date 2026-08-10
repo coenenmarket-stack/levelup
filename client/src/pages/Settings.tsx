@@ -151,6 +151,27 @@ export default function SettingsPage() {
         <Row label="Update life goals" sub={`${goals.length} selected`} onClick={() => setPanel("goals")} testId="row-update-goals" />
       </SettingsGroup>
 
+      <SettingsGroup title="Personalization">
+        <Row
+          label="Goals & plan preferences"
+          sub="Primary focus, time, career interests, intensity"
+          onClick={() => navigate("/personalize")}
+          testId="row-personalize"
+        />
+        <Row
+          label="Career paths"
+          sub="Browse and track progression paths"
+          onClick={() => navigate("/career-paths")}
+          testId="row-career-paths"
+        />
+        <Row
+          label="Tracked goals"
+          sub="Skill, cert, path, and custom targets"
+          onClick={() => navigate("/goals")}
+          testId="row-tracked-goals"
+        />
+      </SettingsGroup>
+
       {/* Preferences */}
       <SettingsGroup title="Preferences">
         <ToggleRow
