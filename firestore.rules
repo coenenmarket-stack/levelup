@@ -9,7 +9,8 @@ rules_version = '2';
 // user could edit their own progress via the browser console, but that only
 // cheats their own game.
 //
-// Friends use sanitized publicProfiles + CF-mediated friendships/activity.
+// Friends / Phase 4 social use sanitized publicProfiles + CF-mediated writes
+// for friendships, referrals, blocks, shared challenges, parties, and activity.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -22,7 +23,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // users/{uid} — profile + settings
+    // users/{uid} — profile + settings (incl. social prefs / leaderboard opt-in)
     match /users/{uid} {
       allow read: if isOwner(uid);
       allow create: if isOwner(uid);
@@ -51,7 +52,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'name', 'photoURL', 'avatar', 'level', 'title', 'currentStreak',
           'legacyScore', 'categoryLevels', 'lifeGoal', 'showLifeGoal',
-          'inviteCode', 'facebookId', 'updatedAt', 'showcaseAchievements'
+          'inviteCode', 'facebookId', 'updatedAt', 'showcaseAchievements',
+          'leaderboardOptIn'
         ]);
       allow delete: if isOwner(uid);
     }
@@ -84,6 +86,54 @@ service cloud.firestore {
 
     // Activity feed — visibleTo array-contains; writes via Cloud Functions
     match /activity/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.visibleTo;
+      allow create, update, delete: if false;
+    }
+
+    // --- Phase 4 social collections (CF-mediated writes) ---
+
+    // Referrals — referrer or referred can read; no client writes (anti-abuse)
+    match /referrals/{id} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.referrerUid
+            || request.auth.uid == resource.data.referredUid);
+      allow create, update, delete: if false;
+    }
+
+    // Blocks — blocker can read own blocks; writes via CF only
+    match /blocks/{id} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.blockerUid;
+      allow create, update, delete: if false;
+    }
+
+    // Shared friend challenges — participants read; CF writes
+    match /sharedChallenges/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+      allow create, update, delete: if false;
+    }
+
+    // Parties — members read; CF writes
+    match /parties/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+      allow create, update, delete: if false;
+    }
+
+    // Party invites — inviter or invitee read; CF writes
+    match /partyInvites/{id} {
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.fromUid
+            || request.auth.uid == resource.data.toUid);
+      allow create, update, delete: if false;
+    }
+
+    // Party challenges — party members read via memberUids on the challenge doc
+    match /partyChallenges/{id} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+      allow create, update, delete: if false;
+    }
+
+    // Bounded social activity — predefined event types only; CF writes
+    match /socialActivity/{id} {
       allow read: if isSignedIn() && request.auth.uid in resource.data.visibleTo;
       allow create, update, delete: if false;
     }
