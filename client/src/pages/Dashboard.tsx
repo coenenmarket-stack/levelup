@@ -27,6 +27,7 @@ import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePro
 import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
 import { SocialHomeCard } from "@/components/SocialHomeCard";
 import { PushOptInCard } from "@/components/PushOptInCard";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 import { readPersonalization } from "@/lib/personalization/store";
 import {
   DEFAULT_PERSONALIZATION,
@@ -341,10 +342,12 @@ export default function Dashboard() {
         <WeeklyChallengesCard />
       </div>
 
-      {/* At most one social growth card */}
-      {me?.id ? <SocialHomeCard uid={String(me.id)} /> : null}
+      {/* At most one social growth card — gated until social CF deploy */}
+      {me?.id && LAUNCH_FLAGS.socialHomeCardEnabled ? (
+        <SocialHomeCard uid={String(me.id)} />
+      ) : null}
 
-      <PushOptInCard />
+      {LAUNCH_FLAGS.remotePushEnabled ? <PushOptInCard /> : null}
 
       {/* More to do */}
       <MoreToDoStrip />

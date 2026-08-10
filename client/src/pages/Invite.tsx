@@ -15,12 +15,10 @@ import {
   inviteLinkForCode,
   shareText,
 } from "@/lib/friends";
-import {
-  activateReferralAfterQuest,
-  loadMyReferrals,
-  redeemReferralCode,
-} from "@/lib/social/api";
+import { loadMyReferrals, redeemReferralCode } from "@/lib/social/api";
 import { REFERRAL_MILESTONES } from "@/lib/social/referrals";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 export default function InvitePage() {
   const { me } = useAuth();
@@ -29,8 +27,10 @@ export default function InvitePage() {
   const qc = useQueryClient();
   const [codeInput, setCodeInput] = useState("");
   const uid = me?.id ? String(me.id) : "";
+  const gated = !LAUNCH_FLAGS.friendsEnabled;
 
   useEffect(() => {
+    if (gated) return;
     try {
       const hash = window.location.hash || "";
       const q = hash.includes("?") ? hash.split("?")[1] : "";
@@ -40,17 +40,17 @@ export default function InvitePage() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [gated]);
 
   const inviteQuery = useQuery({
     queryKey: ["invite-code", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => ensureInviteCode(),
   });
 
   const referralQuery = useQuery({
     queryKey: ["my-referrals", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => loadMyReferrals(uid),
   });
 
@@ -78,6 +78,16 @@ export default function InvitePage() {
         variant: "destructive",
       }),
   });
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="Invites"
+        body="Invite and referral rewards stay hidden until social Cloud Functions are deployed and verified."
+        testId="invite-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="space-y-5 px-1">
@@ -212,16 +222,6 @@ export default function InvitePage() {
           Recognition is cosmetic — referrals are not an XP farm.
         </p>
       </section>
-
-      {/* Dev/helper: no-op unless called — keeps activate path discoverable for QA */}
-      {process.env.NODE_ENV === "development" && (
-        <button
-          type="button"
-          className="hidden"
-          data-testid="button-activate-referral-dev"
-          onClick={() => void activateReferralAfterQuest("dev")}
-        />
-      )}
     </div>
   );
 }

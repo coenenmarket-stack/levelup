@@ -85,8 +85,11 @@ function GatedApp() {
             });
             // Silent token refresh when already granted — no permission prompt
             if (me.notificationsEnabled) {
-              const { refreshPushRegistrationIfGranted } = await import("./lib/pushNotifications");
-              await refreshPushRegistrationIfGranted(String(me.id));
+              const { LAUNCH_FLAGS } = await import("./lib/featureFlags");
+              if (LAUNCH_FLAGS.remotePushEnabled) {
+                const { refreshPushRegistrationIfGranted } = await import("./lib/pushNotifications");
+                await refreshPushRegistrationIfGranted(String(me.id));
+              }
             }
           } catch {
             /* ignore — app must work without APNs/FCM */
@@ -107,6 +110,8 @@ function GatedApp() {
     if (!me?.onboarded || !me.notificationsEnabled) return;
     void (async () => {
       try {
+        const { LAUNCH_FLAGS } = await import("./lib/featureFlags");
+        if (!LAUNCH_FLAGS.remotePushEnabled) return;
         const { refreshPushRegistrationIfGranted, setPushSessionUid } = await import(
           "./lib/pushNotifications"
         );

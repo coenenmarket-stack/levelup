@@ -16,6 +16,8 @@ import {
 } from "@/lib/personalization/coachMemory";
 import { buildCoachActionLinks, type CoachActionLink } from "@/lib/personalization/nextAction";
 import { getCareerPath } from "@/lib/careerPaths";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 type Msg = {
   role: "coach" | "you";
@@ -39,9 +41,10 @@ export default function Coach() {
   const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
   const [memory, setMemory] = useState<CoachMemory | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const gated = !LAUNCH_FLAGS.aiCoachEnabled;
 
   useEffect(() => {
-    if (!me?.id) return;
+    if (gated || !me?.id) return;
     void (async () => {
       const [p, m] = await Promise.all([
         readPersonalization(String(me.id)),
@@ -50,7 +53,7 @@ export default function Coach() {
       setPrefs(p);
       setMemory(m);
     })();
-  }, [me?.id]);
+  }, [me?.id, gated]);
 
   const welcome = useMemo(() => {
     if (!character) return "";
@@ -141,6 +144,16 @@ export default function Coach() {
   }
 
   const hasConversation = messages.filter((m) => m.role === "you").length > 0;
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="AI Coach"
+        body="AI Coach is turned off for this build. Core quests and progression still work from Home."
+        testId="coach-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 200px)" }}>

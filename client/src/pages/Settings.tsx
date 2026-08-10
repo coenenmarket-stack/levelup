@@ -13,6 +13,7 @@ import { ChevronRight, LogOut, Trash2, Lock, Mail, ShieldAlert, X, Check, Loader
 import { compressAvatar } from "@/lib/imageUpload";
 import { readSocialUserPrefs, writeSocialUserPrefs } from "@/lib/social/api";
 import type { SocialUserPrefs } from "@/lib/social/api";
+import { LAUNCH_FLAGS, isSocialSurfaceEnabled } from "@/lib/featureFlags";
 
 const AVATAR_CLASSES = [
   { key: "warrior", name: "Warrior", emoji: "⚔️" },
@@ -128,9 +129,9 @@ export default function SettingsPage() {
         <p className="text-sm text-muted-foreground">Manage your account and your character.</p>
       </div>
 
-      {/* Account card */}
-      <section className="surface rounded-2xl p-4 space-y-3">
-        <div className="flex items-center gap-3">
+      {/* Account */}
+      <SettingsGroup title="Account">
+        <div className="px-4 py-3.5 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center">
             <Mail className="w-4 h-4 text-primary" />
           </div>
@@ -143,10 +144,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Character section */}
-      <SettingsGroup title="Character">
         <Row label="Edit profile" sub={`${character.name}${character.pronouns ? " · " + character.pronouns : ""}`} onClick={() => setPanel("profile")} testId="row-edit-profile" />
         <Row label="Change avatar" sub={`Current: ${AVATAR_CLASSES.find(a => a.key === character.avatar)?.name ?? "Unknown"}`} onClick={() => setPanel("avatar")} testId="row-change-avatar" />
         <Row label="Change class" sub={`Current: ${STARTING_CLASSES.find(c => c.key === character.className)?.name ?? "Unknown"}`} onClick={() => setPanel("class")} testId="row-change-class" />
@@ -174,22 +171,21 @@ export default function SettingsPage() {
         />
       </SettingsGroup>
 
-      {/* Preferences */}
-      <SettingsGroup title="Preferences">
+      {/* Notifications — Progress (local) */}
+      <SettingsGroup title="Notifications · Progress">
         <ToggleRow
-          label="Enable notifications"
+          label="Enable reminders"
           sub={me.notificationsEnabled
-            ? "Reminders for quests, streaks, and weekly challenges"
-            : "Off — Level Up Life will not send reminders"}
+            ? "Local reminders for quests, streaks, and weekly challenges"
+            : "Off — Level Up Life will not schedule local reminders"}
           value={me.notificationsEnabled}
           onChange={async (v) => {
             if (v) {
               const ok = window.confirm(
-                "Level Up Life can remind you about daily missions, streak risk, friend challenges, and progress waiting. Continue to allow notifications?",
+                "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
               );
               if (!ok) return;
               const { requestNotificationPermission, syncNotificationsForUser } = await import("@/lib/notifications");
-              const { registerPushForUser, checkPushPermission } = await import("@/lib/pushNotifications");
               const { doc, setDoc } = await import("firebase/firestore");
               const { db } = await import("@/lib/firebase");
               const uid = String(me.id);
@@ -214,33 +210,37 @@ export default function SettingsPage() {
                 return;
               }
 
-              const push = await registerPushForUser(uid);
-              const pushPerm = push.ok ? "granted" : (await checkPushPermission());
-              if (!push.ok && push.reason === "denied") {
-                await updateSettings({ notificationsEnabled: false, pushEnabled: false });
-                await setDoc(
-                  doc(db, "users", uid),
-                  { pushPermission: "denied", pushEnabled: false, updatedAt: new Date().toISOString() },
-                  { merge: true },
-                );
-                await refresh();
-                window.alert(
-                  "Push permission was denied. You can enable it later in iOS Settings → Level Up Life → Notifications.",
-                );
-                return;
+              let remoteOk = false;
+              let pushPerm: string = localPerm === "granted" ? "granted" : "prompt";
+              if (LAUNCH_FLAGS.remotePushEnabled) {
+                const { registerPushForUser, checkPushPermission } = await import("@/lib/pushNotifications");
+                const push = await registerPushForUser(uid);
+                pushPerm = push.ok ? "granted" : (await checkPushPermission());
+                if (!push.ok && push.reason === "denied") {
+                  await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+                  await setDoc(
+                    doc(db, "users", uid),
+                    { pushPermission: "denied", pushEnabled: false, updatedAt: new Date().toISOString() },
+                    { merge: true },
+                  );
+                  await refresh();
+                  window.alert(
+                    "Push permission was denied. You can enable it later in iOS Settings → Level Up Life → Notifications.",
+                  );
+                  return;
+                }
+                remoteOk = push.ok || push.reason === "unsupported";
               }
 
-              // Local retention always; remote push only if registration succeeded (or unsupported web)
-              const remoteOk = push.ok || push.reason === "unsupported";
               await updateSettings({
                 notificationsEnabled: true,
-                pushEnabled: remoteOk && push.reason !== "denied",
+                pushEnabled: LAUNCH_FLAGS.remotePushEnabled && remoteOk,
               });
               await setDoc(
                 doc(db, "users", uid),
                 {
                   pushPermission: pushPerm,
-                  pushEnabled: remoteOk && push.reason !== "denied",
+                  pushEnabled: LAUNCH_FLAGS.remotePushEnabled && remoteOk,
                   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
                   updatedAt: new Date().toISOString(),
                 },
@@ -343,13 +343,11 @@ export default function SettingsPage() {
             />
           </>
         )}
-        <ToggleRow
-          label="Show life goal to friends"
-          sub="Appears on your public friend profile"
-          value={me.showLifeGoal !== false}
-          onChange={(v) => updateSettings({ showLifeGoal: v })}
-          testId="toggle-show-life-goal"
-        />
+      </SettingsGroup>
+
+      <SocialPrivacySettings uid={me.id ? String(me.id) : ""} showLifeGoal={me.showLifeGoal !== false} onShowLifeGoal={(v) => updateSettings({ showLifeGoal: v })} />
+
+      <SettingsGroup title="App">
         <ToggleRow
           label="Dark mode"
           sub="Recommended for the RPG vibe"
@@ -358,8 +356,6 @@ export default function SettingsPage() {
           testId="toggle-dark-mode"
         />
       </SettingsGroup>
-
-      <SocialPrivacySettings uid={me.id ? String(me.id) : ""} />
 
       {/* Security */}
       <SettingsGroup title="Security">
@@ -604,11 +600,23 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function SocialPrivacySettings({ uid }: { uid: string }) {
+function SocialPrivacySettings({
+  uid,
+  showLifeGoal,
+  onShowLifeGoal,
+}: {
+  uid: string;
+  showLifeGoal: boolean;
+  onShowLifeGoal: (v: boolean) => void;
+}) {
   const { toast } = useToast();
+  const showSocial = isSocialSurfaceEnabled();
+  const showEmail = LAUNCH_FLAGS.emailNotificationsEnabled;
+  const showRemoteSocialNotify = LAUNCH_FLAGS.remotePushEnabled && showSocial;
+
   const prefsQuery = useQuery({
     queryKey: ["social-user-prefs", uid],
-    enabled: !!uid,
+    enabled: !!uid && (showSocial || showEmail || showRemoteSocialNotify),
     queryFn: () => readSocialUserPrefs(uid),
   });
   const prefs = prefsQuery.data;
@@ -624,188 +632,179 @@ function SocialPrivacySettings({ uid }: { uid: string }) {
   };
 
   if (!uid) return null;
+  if (!showSocial && !showEmail) return null;
 
   return (
     <>
-      <SettingsGroup title="Social privacy">
-        <ToggleRow
-          label="Leaderboard participation"
-          sub="Off by default. Opt in to appear on friend/party weekly ranks."
-          value={prefs?.leaderboardOptIn === true}
-          onChange={(v) => void save({ leaderboardOptIn: v })}
-          testId="toggle-leaderboard-opt-in"
-        />
-        <ToggleRow
-          label="Show level to friends"
-          sub="Level and title on your friend profile"
-          value={prefs?.showLevelToFriends !== false}
-          onChange={(v) => void save({ showLevelToFriends: v })}
-          testId="toggle-show-level-friends"
-        />
-        <ToggleRow
-          label="Show streak to friends"
-          sub="Current streak on your friend profile"
-          value={prefs?.showStreakToFriends !== false}
-          onChange={(v) => void save({ showStreakToFriends: v })}
-          testId="toggle-show-streak-friends"
-        />
-        <ToggleRow
-          label="Show skills to friends"
-          sub="Skill levels used for compare view"
-          value={prefs?.showSkillsToFriends !== false}
-          onChange={(v) => void save({ showSkillsToFriends: v })}
-          testId="toggle-show-skills-friends"
-        />
-        <ToggleRow
-          label="Show showcase achievements"
-          sub="Up to three badges on your friend profile"
-          value={prefs?.showShowcaseAchievements !== false}
-          onChange={(v) => void save({ showShowcaseAchievements: v })}
-          testId="toggle-show-showcase"
-        />
-        <ToggleRow
-          label="Social activity visibility"
-          sub="Allow milestone events in friends' social feeds"
-          value={prefs?.showSocialActivity !== false}
-          onChange={(v) => void save({ showSocialActivity: v })}
-          testId="toggle-show-social-activity"
-        />
-      </SettingsGroup>
+      {showSocial && (
+        <SettingsGroup title="Privacy">
+          <ToggleRow
+            label="Show life goal to friends"
+            sub="Appears on your public friend profile"
+            value={showLifeGoal}
+            onChange={onShowLifeGoal}
+            testId="toggle-show-life-goal"
+          />
+          <ToggleRow
+            label="Leaderboard participation"
+            sub="Off by default. Opt in to appear on friend/party weekly ranks."
+            value={prefs?.leaderboardOptIn === true}
+            onChange={(v) => void save({ leaderboardOptIn: v })}
+            testId="toggle-leaderboard-opt-in"
+          />
+          <ToggleRow
+            label="Show level to friends"
+            sub="Level and title on your friend profile"
+            value={prefs?.showLevelToFriends !== false}
+            onChange={(v) => void save({ showLevelToFriends: v })}
+            testId="toggle-show-level-friends"
+          />
+          <ToggleRow
+            label="Show streak to friends"
+            sub="Current streak on your friend profile"
+            value={prefs?.showStreakToFriends !== false}
+            onChange={(v) => void save({ showStreakToFriends: v })}
+            testId="toggle-show-streak-friends"
+          />
+          <ToggleRow
+            label="Show skills to friends"
+            sub="Skill levels used for compare view"
+            value={prefs?.showSkillsToFriends !== false}
+            onChange={(v) => void save({ showSkillsToFriends: v })}
+            testId="toggle-show-skills-friends"
+          />
+          <ToggleRow
+            label="Show showcase achievements"
+            sub="Up to three badges on your friend profile"
+            value={prefs?.showShowcaseAchievements !== false}
+            onChange={(v) => void save({ showShowcaseAchievements: v })}
+            testId="toggle-show-showcase"
+          />
+          <ToggleRow
+            label="Social activity visibility"
+            sub="Allow milestone events in friends' social feeds"
+            value={prefs?.showSocialActivity !== false}
+            onChange={(v) => void save({ showSocialActivity: v })}
+            testId="toggle-show-social-activity"
+          />
+        </SettingsGroup>
+      )}
 
-      <SettingsGroup title="Social notifications">
-        <ToggleRow
-          label="Social notifications"
-          sub="Master switch for friend, challenge, party, and referral alerts"
-          value={prefs?.notifySocialMaster !== false}
-          onChange={(v) => void save({ notifySocialMaster: v })}
-          testId="toggle-notify-social-master"
-        />
-        {prefs?.notifySocialMaster !== false && (
-          <>
-            <ToggleRow
-              label="Friend requests"
-              sub="Incoming requests and acceptances"
-              value={prefs?.notifyFriendRequests !== false}
-              onChange={(v) => void save({ notifyFriendRequests: v })}
-              testId="toggle-notify-friend-requests"
-            />
-            <ToggleRow
-              label="Challenge invites"
-              sub="Shared challenge invitations"
-              value={prefs?.notifyChallengeInvites !== false}
-              onChange={(v) => void save({ notifyChallengeInvites: v })}
-              testId="toggle-notify-challenge-invites"
-            />
-            <ToggleRow
-              label="Challenge updates"
-              sub="Accepted or completed shared challenges"
-              value={prefs?.notifyChallengeUpdates !== false}
-              onChange={(v) => void save({ notifyChallengeUpdates: v })}
-              testId="toggle-notify-challenge-updates"
-            />
-            <ToggleRow
-              label="Party invites"
-              sub="Invitations to join a party"
-              value={prefs?.notifyPartyInvites !== false}
-              onChange={(v) => void save({ notifyPartyInvites: v })}
-              testId="toggle-notify-party-invites"
-            />
-            <ToggleRow
-              label="Party challenge updates"
-              sub="Party joined and party challenge complete"
-              value={prefs?.notifyPartyUpdates !== false}
-              onChange={(v) => void save({ notifyPartyUpdates: v })}
-              testId="toggle-notify-party-updates"
-            />
-            <ToggleRow
-              label="Referral milestones"
-              sub="When a successful referral activates"
-              value={prefs?.notifyReferralMilestones !== false}
-              onChange={(v) => void save({ notifyReferralMilestones: v })}
-              testId="toggle-notify-referral-milestones"
-            />
-          </>
-        )}
-        <p className="text-[11px] text-muted-foreground px-1 pt-1">
-          Social alerts use remote push when enabled. Daily/streak reminders stay on local notifications.
-        </p>
-      </SettingsGroup>
+      {showRemoteSocialNotify && (
+        <SettingsGroup title="Notifications · Social">
+          <ToggleRow
+            label="Social notifications"
+            sub="Master switch for friend, challenge, party, and referral alerts"
+            value={prefs?.notifySocialMaster !== false}
+            onChange={(v) => void save({ notifySocialMaster: v })}
+            testId="toggle-notify-social-master"
+          />
+          {prefs?.notifySocialMaster !== false && (
+            <>
+              <ToggleRow
+                label="Friend requests"
+                sub="Incoming requests and acceptances"
+                value={prefs?.notifyFriendRequests !== false}
+                onChange={(v) => void save({ notifyFriendRequests: v })}
+                testId="toggle-notify-friend-requests"
+              />
+              <ToggleRow
+                label="Challenge invites"
+                sub="Shared challenge invitations"
+                value={prefs?.notifyChallengeInvites !== false}
+                onChange={(v) => void save({ notifyChallengeInvites: v })}
+                testId="toggle-notify-challenge-invites"
+              />
+              <ToggleRow
+                label="Challenge updates"
+                sub="Accepted or completed shared challenges"
+                value={prefs?.notifyChallengeUpdates !== false}
+                onChange={(v) => void save({ notifyChallengeUpdates: v })}
+                testId="toggle-notify-challenge-updates"
+              />
+              <ToggleRow
+                label="Party invites"
+                sub="Invitations to join a party"
+                value={prefs?.notifyPartyInvites !== false}
+                onChange={(v) => void save({ notifyPartyInvites: v })}
+                testId="toggle-notify-party-invites"
+              />
+              <ToggleRow
+                label="Party challenge updates"
+                sub="Party joined and party challenge complete"
+                value={prefs?.notifyPartyUpdates !== false}
+                onChange={(v) => void save({ notifyPartyUpdates: v })}
+                testId="toggle-notify-party-updates"
+              />
+              <ToggleRow
+                label="Referral milestones"
+                sub="When a successful referral activates"
+                value={prefs?.notifyReferralMilestones !== false}
+                onChange={(v) => void save({ notifyReferralMilestones: v })}
+                testId="toggle-notify-referral-milestones"
+              />
+            </>
+          )}
+          <ToggleRow
+            label="Quiet hours"
+            sub="Default 10:00 PM – 8:00 AM local. Routine push is skipped."
+            value={prefs?.quietHours?.enabled !== false}
+            onChange={(v) =>
+              void save({
+                quietHours: {
+                  enabled: v,
+                  startHour: prefs?.quietHours?.startHour ?? 22,
+                  endHour: prefs?.quietHours?.endHour ?? 8,
+                },
+              })
+            }
+            testId="toggle-quiet-hours"
+          />
+          <p className="text-[11px] text-muted-foreground px-1 pt-1">
+            Social alerts use remote push when enabled. Daily/streak reminders stay on local notifications.
+          </p>
+        </SettingsGroup>
+      )}
 
-      <SettingsGroup title="Growth notifications">
-        <ToggleRow
-          label="Achievements"
-          sub="Reserved for milestone unlocks when remote triggers ship (not every quest)"
-          value={prefs?.notifyAchievements !== false}
-          onChange={(v) => void save({ notifyAchievements: v })}
-          testId="toggle-notify-achievements"
-        />
-        <ToggleRow
-          label="Goals & career progress"
-          sub="Reserved for cert/path milestones when remote triggers ship"
-          value={prefs?.notifyGoalsProgress !== false}
-          onChange={(v) => void save({ notifyGoalsProgress: v })}
-          testId="toggle-notify-goals"
-        />
-        <p className="text-[11px] text-muted-foreground px-1 pt-1">
-          Preference storage is live; achievement/goal push delivery is preference-gated and not auto-fired yet.
-        </p>
-      </SettingsGroup>
-
-      <SettingsGroup title="Quiet hours">
-        <ToggleRow
-          label="Quiet hours"
-          sub="Default 10:00 PM – 8:00 AM local. Routine push is skipped."
-          value={prefs?.quietHours?.enabled !== false}
-          onChange={(v) =>
-            void save({
-              quietHours: {
-                enabled: v,
-                startHour: prefs?.quietHours?.startHour ?? 22,
-                endHour: prefs?.quietHours?.endHour ?? 8,
-              },
-            })
-          }
-          testId="toggle-quiet-hours"
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Email">
-        <ToggleRow
-          label="Email notifications"
-          sub="Off by default. Requires a verified email. Not marketing."
-          value={prefs?.emailEnabled === true}
-          onChange={(v) => void save({ emailEnabled: v })}
-          testId="toggle-email-master"
-        />
-        {prefs?.emailEnabled === true && (
-          <>
-            <ToggleRow
-              label="Weekly progress email"
-              sub="Sunday evening summary in your timezone"
-              value={prefs?.emailWeeklyProgress === true}
-              onChange={(v) => void save({ emailWeeklyProgress: v })}
-              testId="toggle-email-weekly"
-            />
-            <ToggleRow
-              label="Goal reminders"
-              sub="Occasional nudge for active goals"
-              value={prefs?.emailGoalReminders === true}
-              onChange={(v) => void save({ emailGoalReminders: v })}
-              testId="toggle-email-goals"
-            />
-            <ToggleRow
-              label="Social digest"
-              sub="Bundled friend updates — not one email per event"
-              value={prefs?.emailSocialDigest === true}
-              onChange={(v) => void save({ emailSocialDigest: v })}
-              testId="toggle-email-social"
-            />
-          </>
-        )}
-        <p className="text-[11px] text-muted-foreground px-1 pt-1">
-          Change these anytime. Account security emails from Firebase Auth are separate.
-        </p>
-      </SettingsGroup>
+      {showEmail && (
+        <SettingsGroup title="Notifications · Email">
+          <ToggleRow
+            label="Email notifications"
+            sub="Off by default. Requires a verified email. Not marketing."
+            value={prefs?.emailEnabled === true}
+            onChange={(v) => void save({ emailEnabled: v })}
+            testId="toggle-email-master"
+          />
+          {prefs?.emailEnabled === true && (
+            <>
+              <ToggleRow
+                label="Weekly progress email"
+                sub="Sunday evening summary in your timezone"
+                value={prefs?.emailWeeklyProgress === true}
+                onChange={(v) => void save({ emailWeeklyProgress: v })}
+                testId="toggle-email-weekly"
+              />
+              <ToggleRow
+                label="Goal reminders"
+                sub="Occasional nudge for active goals"
+                value={prefs?.emailGoalReminders === true}
+                onChange={(v) => void save({ emailGoalReminders: v })}
+                testId="toggle-email-goals"
+              />
+              <ToggleRow
+                label="Social digest"
+                sub="Bundled friend updates — not one email per event"
+                value={prefs?.emailSocialDigest === true}
+                onChange={(v) => void save({ emailSocialDigest: v })}
+                testId="toggle-email-social"
+              />
+            </>
+          )}
+          <p className="text-[11px] text-muted-foreground px-1 pt-1">
+            Change these anytime. Account security emails from Firebase Auth are separate.
+          </p>
+        </SettingsGroup>
+      )}
     </>
   );
 }

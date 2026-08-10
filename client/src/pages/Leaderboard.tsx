@@ -23,6 +23,8 @@ import {
   rankLeaderboard,
   type LeaderboardMetric,
 } from "@/lib/social/leaderboards";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 type Scope = "friends" | "party";
 
@@ -37,10 +39,11 @@ export default function LeaderboardPage() {
   const [scope, setScope] = useState<Scope>("friends");
   const [metric, setMetric] = useState<LeaderboardMetric>("weeklyXp");
   const weekId = isoWeekIdLocal();
+  const gated = !LAUNCH_FLAGS.leaderboardsEnabled;
 
   const prefsQuery = useQuery({
     queryKey: ["social-prefs", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => readSocialUserPrefs(uid),
   });
 
@@ -48,7 +51,7 @@ export default function LeaderboardPage() {
 
   const friendshipsQuery = useQuery({
     queryKey: ["friendships", uid],
-    enabled: !!uid && optedIn,
+    enabled: !!uid && optedIn && !gated,
     queryFn: () => loadFriendships(uid),
   });
 
@@ -63,7 +66,7 @@ export default function LeaderboardPage() {
 
   const partiesQuery = useQuery({
     queryKey: ["my-parties", uid],
-    enabled: !!uid && optedIn && scope === "party",
+    enabled: !!uid && optedIn && scope === "party" && !gated,
     queryFn: () => loadMyParties(uid),
   });
 
@@ -77,13 +80,13 @@ export default function LeaderboardPage() {
 
   const profilesQuery = useQuery({
     queryKey: ["leaderboard-profiles", peerUids.join(",")],
-    enabled: peerUids.length > 0 && optedIn,
+    enabled: peerUids.length > 0 && optedIn && !gated,
     queryFn: () => loadPublicProfiles(peerUids),
   });
 
   const ownStatsQuery = useQuery({
     queryKey: ["own-weekly-stats", uid, weekId],
-    enabled: !!uid && optedIn,
+    enabled: !!uid && optedIn && !gated,
     queryFn: () => loadOwnWeeklyQuestStats(uid),
   });
 
@@ -138,6 +141,16 @@ export default function LeaderboardPage() {
   const optedInPeers = ((profilesQuery.data ?? []) as ProfileWithOptIn[]).filter(
     (p) => p.leaderboardOptIn,
   ).length;
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="Leaderboard"
+        body="Leaderboards stay hidden until social Cloud Functions are deployed and friend opt-in behavior is verified on device."
+        testId="leaderboard-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">

@@ -47,6 +47,8 @@ import {
   startPartyChallenge,
   type PartyChallengeDoc,
 } from "@/lib/social/api";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 type Tab = "challenges" | "parties";
 
@@ -54,6 +56,16 @@ export default function SocialHubPage() {
   const { me } = useAuth();
   const uid = me?.id ? String(me.id) : "";
   const [tab, setTab] = useState<Tab>("challenges");
+
+  if (!LAUNCH_FLAGS.socialChallengesEnabled && !LAUNCH_FLAGS.partiesEnabled) {
+    return (
+      <FeatureUnavailable
+        title="Challenges & Parties"
+        body="Shared challenges and parties stay hidden until social Cloud Functions are deployed and verified."
+        testId="social-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">

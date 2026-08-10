@@ -13,22 +13,25 @@ import {
   markInboxRead,
 } from "@/lib/notificationInbox";
 import { resolveDeepLinkPath } from "@/lib/notificationDeepLinks";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 export default function NotificationsPage() {
   const { me } = useAuth();
   const uid = me?.id ? String(me.id) : "";
   const [, setLoc] = useLocation();
   const qc = useQueryClient();
+  const gated = !LAUNCH_FLAGS.notificationInboxEnabled;
 
   const inboxQuery = useQuery({
     queryKey: ["notification-inbox", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => loadInbox(uid),
   });
 
   const unreadQuery = useQuery({
     queryKey: ["notification-unread", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => countUnreadInbox(uid),
   });
 
@@ -49,6 +52,16 @@ export default function NotificationsPage() {
   });
 
   const items = inboxQuery.data ?? [];
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="Inbox"
+        body="The notification inbox stays hidden until remote push Cloud Functions are deployed and verified."
+        testId="notifications-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">

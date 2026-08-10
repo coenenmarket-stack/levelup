@@ -1,13 +1,14 @@
-# Level Up Life — Firebase Deploy Instructions (Spark / Free Plan)
+# Level Up Life — Firebase Deploy Notes
 
-Project: **level-up-life-73702** → will be live at **https://level-up-life-73702.web.app**
+Project: **level-up-life-73702**
 
-This build runs entirely on Firebase's free **Spark** plan:
-- **Hosting** — serves the static client
-- **Auth** — Email/Password + Google sign-in
-- **Firestore** — user data and game progress
+> For App Store / TestFlight release setup (Codemagic-first), see **`docs/FINAL-MACHINE-SETUP.md`**.  
+> For device QA, see **`docs/RELEASE-QA-CHECKLIST.md`**.
 
-No Cloud Functions, no billing required. The AI Coach page shows a "Coming Soon" placeholder for now — we'll wire it up later when you're ready to enable Blaze.
+The app uses Firebase Auth, Firestore, Hosting, and Cloud Functions (AI Coach, quests, social, notifications).  
+AI Coach is implemented via `functions:aiCoach` (Gemini). If the function is undeployed, the client should soft-fail — it is not a “Coming Soon” stub.
+
+Hosting URL (when deployed): **https://level-up-life-73702.web.app**
 
 ---
 
@@ -22,7 +23,7 @@ In [console.firebase.google.com](https://console.firebase.google.com/project/lev
   - Mode: **Production**
   - Location: **nam5 (United States)** (or pick the closest region)
 
-That's it — no Functions, no Blaze upgrade needed.
+For Functions (Coach, social, email), Blaze is typically required.
 
 ---
 

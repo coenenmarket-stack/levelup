@@ -37,6 +37,8 @@ import { blockUser, redeemReferralCode } from "@/lib/social/api";
 import { isFacebookConfigured } from "@/lib/socialConfig";
 import { AVATAR_CLASSES } from "@shared/schema";
 import type { Category } from "@/lib/types";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map((a) => [a.key, a.emoji]));
 const SKILL_ORDER = ["health", "wealth", "career", "family", "mindset"] as const;
@@ -70,9 +72,11 @@ export default function FriendsPage() {
   }>>([]);
 
   const uid = me?.id ? String(me.id) : "";
+  const gated = !LAUNCH_FLAGS.friendsEnabled;
 
   // Prefill from deep link / hash query
   useEffect(() => {
+    if (gated) return;
     try {
       const hash = window.location.hash || "";
       const q = hash.includes("?") ? hash.split("?")[1] : "";
@@ -80,11 +84,11 @@ export default function FriendsPage() {
       const code = params.get("code");
       if (code) setCodeInput(code.toUpperCase());
     } catch { /* ignore */ }
-  }, [loc]);
+  }, [loc, gated]);
 
   const inviteQuery = useQuery({
     queryKey: ["friends-invite", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: async () => {
       const res = await ensureInviteCode();
       return res;
@@ -93,7 +97,7 @@ export default function FriendsPage() {
 
   const friendshipsQuery = useQuery({
     queryKey: ["friendships", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => loadFriendships(uid),
   });
 
@@ -127,7 +131,7 @@ export default function FriendsPage() {
 
   const activityQuery = useQuery({
     queryKey: ["friend-activity", uid],
-    enabled: !!uid,
+    enabled: !!uid && !gated,
     queryFn: () => loadActivityFeed(uid),
   });
 
@@ -239,6 +243,16 @@ export default function FriendsPage() {
 
   const inviteCode = inviteQuery.data?.inviteCode ?? "";
   const selected = selectedFriend ? profileMap.get(selectedFriend) : null;
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="Friends"
+        body="Friends stay hidden until social Cloud Functions are deployed and verified on a real device."
+        testId="friends-unavailable"
+      />
+    );
+  }
 
   if (selected) {
     return (
