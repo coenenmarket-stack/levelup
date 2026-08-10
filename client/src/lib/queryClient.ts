@@ -22,6 +22,8 @@ import {
   ensureWeeklyChallenges,
   claimWeeklyChallengeReward,
 } from "./weeklyChallenges";
+import { candidateDayKeys, dayKeyLocal } from "./dayKey";
+import { ensureAchievementDocs } from "./achievements";
 
 // ------------------------------------------------------------
 // Helpers
@@ -34,16 +36,20 @@ function requireUid(): string {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dayKeyLocal();
 }
 
-/** Load today's completed quest IDs for the signed-in user. */
+/** Load completed quest IDs for local today (+ legacy UTC today when different). */
 async function getTodayCompletedQuestIds(uid: string): Promise<Set<string>> {
-  const compSnap = await getDocs(query(
-    collection(db, "characters", uid, "completions"),
-    where("completionDate", "==", todayISO()),
-  ));
-  return new Set(compSnap.docs.map(d => String((d.data() as any).questId)));
+  const out = new Set<string>();
+  for (const day of candidateDayKeys()) {
+    const compSnap = await getDocs(query(
+      collection(db, "characters", uid, "completions"),
+      where("completionDate", "==", day),
+    ));
+    compSnap.docs.forEach((d) => out.add(String((d.data() as any).questId)));
+  }
+  return out;
 }
 
 /** Attach completedToday from today's completion log (not stored on quest docs). */
@@ -74,29 +80,31 @@ async function mergePackWithCompletions(uid: string, packQuests: Array<{ id: str
   const merged = enrichQuestsWithCompletion(packQuests, completedIds);
   const knownIds = new Set(merged.map(q => String(q.id)));
 
-  const compSnap = await getDocs(query(
-    collection(db, "characters", uid, "completions"),
-    where("completionDate", "==", todayISO()),
-  ));
+  for (const day of candidateDayKeys()) {
+    const compSnap = await getDocs(query(
+      collection(db, "characters", uid, "completions"),
+      where("completionDate", "==", day),
+    ));
 
-  for (const docSnap of compSnap.docs) {
-    const c = docSnap.data() as any;
-    const qid = String(c.questId);
-    if (!PACK_CATEGORIES.has(c.category)) continue;
-    if (knownIds.has(qid)) continue;
-    if (!completedIds.has(qid)) continue;
-    merged.push({
-      id: qid,
-      title: c.questTitle,
-      description: null,
-      category: c.category,
-      difficulty: c.difficulty ?? "easy",
-      xpReward: c.xpReward ?? 10,
-      isDaily: true,
-      active: true,
-      completedToday: true,
-    } as any);
-    knownIds.add(qid);
+    for (const docSnap of compSnap.docs) {
+      const c = docSnap.data() as any;
+      const qid = String(c.questId);
+      if (!PACK_CATEGORIES.has(c.category)) continue;
+      if (knownIds.has(qid)) continue;
+      if (!completedIds.has(qid)) continue;
+      merged.push({
+        id: qid,
+        title: c.questTitle,
+        description: null,
+        category: c.category,
+        difficulty: c.difficulty ?? "easy",
+        xpReward: c.xpReward ?? 10,
+        isDaily: true,
+        active: true,
+        completedToday: true,
+      } as any);
+      knownIds.add(qid);
+    }
   }
 
   merged.sort(
@@ -234,6 +242,7 @@ async function readCategories(uid: string) {
 }
 
 async function readAchievements(uid: string) {
+  await ensureAchievementDocs(uid);
   const snap = await getDocs(collection(db, "characters", uid, "achievements"));
   return snap.docs.map(docToObj);
 }
@@ -260,12 +269,12 @@ async function readStats(uid: string) {
     readAchievements(uid),
   ]);
 
-  // Weekly: last 7 days, sum XP and quest counts per date
+  // Weekly: last 7 local calendar days
   const days: { date: string; xp: number; quests: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const date = d.toISOString().slice(0, 10);
+    const date = dayKeyLocal(d);
     days.push({ date, xp: 0, quests: 0 });
   }
   const idx: Record<string, number> = {};

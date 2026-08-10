@@ -44,7 +44,7 @@ type Panel = null | "profile" | "avatar" | "class" | "goals" | "password" | "del
 export default function SettingsPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const { me, logout, changePassword, updateSettings, deleteAccount } = useAuth();
+  const { me, logout, changePassword, updateSettings, deleteAccount, refresh } = useAuth();
   const { character } = useGame();
   const { theme, toggle: toggleTheme } = useTheme();
   const { toast } = useToast();
@@ -154,21 +154,81 @@ export default function SettingsPage() {
       {/* Preferences */}
       <SettingsGroup title="Preferences">
         <ToggleRow
-          label="Notifications"
-          sub="Daily quest reminders and streak alerts (when supported on this device)"
+          label="Enable notifications"
+          sub={me.notificationsEnabled
+            ? "Reminders for quests, streaks, and weekly challenges"
+            : "Off — Level Up Life will not send reminders"}
           value={me.notificationsEnabled}
           onChange={async (v) => {
-            await updateSettings({ notificationsEnabled: v });
-            try {
-              const { requestNotificationPermission, syncDailyReminderSchedule } = await import("@/lib/notifications");
-              if (v) await requestNotificationPermission();
-              await syncDailyReminderSchedule(v);
-            } catch (e) {
-              console.warn("notification sync skipped", e);
+            if (v) {
+              const ok = window.confirm(
+                "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
+              );
+              if (!ok) return;
+              const { requestNotificationPermission, syncNotificationsForUser } = await import("@/lib/notifications");
+              const perm = await requestNotificationPermission();
+              if (perm === "denied") {
+                await updateSettings({ notificationsEnabled: false });
+                await refresh();
+                window.alert("Notifications are blocked for this app. You can enable them in system Settings later.");
+                return;
+              }
+              await updateSettings({ notificationsEnabled: true });
+              await refresh();
+              await syncNotificationsForUser({
+                prefs: {
+                  notificationsEnabled: true,
+                  notifyDailyQuests: me.notifyDailyQuests !== false,
+                  notifyStreakRisk: me.notifyStreakRisk !== false,
+                  notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                },
+                currentStreak: character.currentStreak,
+                longestStreak: character.longestStreak,
+                lastCompletionDate: character.lastCompletionDate,
+              });
+            } else {
+              await updateSettings({ notificationsEnabled: false });
+              await refresh();
+              const { cancelAllRetentionNotifications } = await import("@/lib/notifications");
+              await cancelAllRetentionNotifications();
             }
           }}
           testId="toggle-notifications"
         />
+        {me.notificationsEnabled && (
+          <>
+            <ToggleRow
+              label="Daily quest reminder"
+              sub="Early evening if missions remain"
+              value={me.notifyDailyQuests !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyDailyQuests: v });
+                await refresh();
+              }}
+              testId="toggle-notify-daily"
+            />
+            <ToggleRow
+              label="Streak reminder"
+              sub="Later evening only when your streak is at risk"
+              value={me.notifyStreakRisk !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyStreakRisk: v });
+                await refresh();
+              }}
+              testId="toggle-notify-streak"
+            />
+            <ToggleRow
+              label="Weekly challenge reminder"
+              sub="Near the end of the week if incomplete"
+              value={me.notifyWeeklyChallenges !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyWeeklyChallenges: v });
+                await refresh();
+              }}
+              testId="toggle-notify-weekly"
+            />
+          </>
+        )}
         <ToggleRow
           label="Show life goal to friends"
           sub="Appears on your public friend profile"

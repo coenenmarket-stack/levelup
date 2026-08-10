@@ -28,6 +28,8 @@ export type PublicProfile = {
   showLifeGoal?: boolean;
   inviteCode?: string | null;
   facebookId?: string | null;
+  /** Up to 3 unlocked achievement keys for friends view */
+  showcaseAchievements?: string[];
   updatedAt?: string;
 };
 
@@ -68,6 +70,13 @@ export async function syncPublicProfileLocal(
   const showLifeGoal = opts?.showLifeGoal !== false;
   const existing = await getDoc(doc(db, "publicProfiles", uid));
   const prev = existing.exists() ? (existing.data() as any) : {};
+  let showcaseAchievements: string[] = prev.showcaseAchievements ?? [];
+  try {
+    const { topUnlockedAchievementKeys } = await import("./achievements");
+    showcaseAchievements = await topUnlockedAchievementKeys(uid, 3);
+  } catch {
+    /* keep previous */
+  }
   const payload = {
     name: character.name,
     photoURL: character.photoURL ?? null,
@@ -81,6 +90,7 @@ export async function syncPublicProfileLocal(
     showLifeGoal,
     inviteCode: opts?.inviteCode ?? prev.inviteCode ?? null,
     facebookId: prev.facebookId ?? null,
+    showcaseAchievements,
     updatedAt: new Date().toISOString(),
   };
   await setDoc(doc(db, "publicProfiles", uid), payload, { merge: true });

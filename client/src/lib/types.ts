@@ -6,6 +6,9 @@ export type Me = {
   emailVerified: boolean;
   onboarded: boolean;
   notificationsEnabled: boolean;
+  notifyDailyQuests: boolean;
+  notifyStreakRisk: boolean;
+  notifyWeeklyChallenges: boolean;
   showLifeGoal: boolean;
   facebookId?: string | null;
   createdAt: string;

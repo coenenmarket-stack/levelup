@@ -16,14 +16,25 @@ export type PackPick = {
   xpReward: number;
 };
 
-/** 2× weakest, 1× next three, 0× strongest — always 5 slots. */
+/** Default primary daily pack size (Phase 2 UX). */
+export const DAILY_PACK_SIZE = 3;
+
+/**
+ * Skill slots for a daily pack.
+ * Default 3: one quest each from the three weakest skills (strong variety, lower load).
+ * Legacy 5-slot pattern (2× weakest, 1× next three) kept for fill math when refreshing old packs.
+ */
 export function biasedSkillSlots(
   catLevels: Record<string, number>,
-  count = 5,
+  count: number = DAILY_PACK_SIZE,
 ): SkillKey[] {
   const sorted = [...CATEGORY_KEYS].sort(
     (a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b),
   );
+  if (count <= 3) {
+    return sorted.slice(0, count);
+  }
+  // Legacy 5-pack pattern
   const pattern: SkillKey[] = [sorted[0], sorted[0], sorted[1], sorted[2], sorted[3]];
   return pattern.slice(0, count);
 }
@@ -33,9 +44,10 @@ export function biasedSlotsFilling(
   catLevels: Record<string, number>,
   keptCategories: SkillKey[],
   need: number,
+  targetSize: number = DAILY_PACK_SIZE,
 ): SkillKey[] {
   if (need <= 0) return [];
-  const remaining = biasedSkillSlots(catLevels, 5);
+  const remaining = biasedSkillSlots(catLevels, targetSize);
   for (const k of keptCategories) {
     const i = remaining.indexOf(k);
     if (i >= 0) remaining.splice(i, 1);
@@ -77,13 +89,11 @@ export function pickCatalogForSlots(
   const base = hashStr(seed);
 
   slots.forEach((category, slotIndex) => {
-    const preferDaily = true;
-    let pool = poolForCategory(category, preferDaily).filter((q) => !used.has(q.id));
+    let pool = poolForCategory(category, true).filter((q) => !used.has(q.id));
     if (pool.length === 0) {
       pool = poolForCategory(category, false).filter((q) => !used.has(q.id));
     }
     if (pool.length === 0) {
-      // Absolute fallback — allow reuse within the pack rather than fail.
       pool = poolForCategory(category, false);
     }
     const idx = pool.length ? (base + slotIndex * 97) % pool.length : 0;

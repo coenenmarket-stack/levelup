@@ -539,6 +539,18 @@ function FriendCompare({
           {friend.lifeGoal && (
             <div className="text-xs text-accent mt-1 truncate">Goal: {friend.lifeGoal}</div>
           )}
+          {(friend.showcaseAchievements?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2" data-testid="friend-showcase-achievements">
+              {friend.showcaseAchievements!.slice(0, 3).map((key) => (
+                <span
+                  key={key}
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-secondary/60 text-muted-foreground"
+                >
+                  {key.replace(/-/g, " ")}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="text-right">
           <div className="flex items-center gap-1 justify-end text-accent">

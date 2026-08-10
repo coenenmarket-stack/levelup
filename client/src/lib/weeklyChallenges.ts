@@ -1,6 +1,5 @@
 /**
- * Weekly challenges — meta goals over the ISO week, rewarded once via
- * the same XP fields as quests (no second XP system).
+ * Weekly challenges — local ISO week, claim-once XP via deterministic completion docs.
  */
 
 import {
@@ -14,15 +13,16 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { dayKeyUtc, streakXpMultiplier } from "./streak";
+import { dayKeyLocal, isoWeekBoundsLocal, isoWeekIdLocal } from "./dayKey";
+import { streakXpMultiplier } from "./streak";
 import { XP_TO_NEXT_LEVEL, titleForLevel } from "@shared/schema";
+import { evaluateAchievements } from "./achievements";
 
 export type WeeklyChallengeDef = {
   key: string;
   title: string;
   description: string;
   target: number;
-  /** Base XP awarded once when claimed (then streak mult applied). */
   xpReward: number;
   metric: "quests" | "dailyPack" | "skills";
 };
@@ -39,37 +39,6 @@ export type WeeklyChallengeState = {
   weekEnd: string;
   challenges: WeeklyChallengeProgress[];
 };
-
-/** ISO week id YYYY-Www (UTC). */
-export function isoWeekId(d: Date = new Date()): string {
-  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  // Thursday in current week decides the year.
-  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
-}
-
-export function isoWeekBounds(weekId: string): { start: string; end: string } {
-  const m = /^(\d{4})-W(\d{2})$/.exec(weekId);
-  if (!m) {
-    const today = dayKeyUtc();
-    return { start: today, end: today };
-  }
-  const year = Number(m[1]);
-  const week = Number(m[2]);
-  // ISO week 1 is the week with Jan 4th
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const day = jan4.getUTCDay() || 7;
-  const monday = new Date(jan4);
-  monday.setUTCDate(jan4.getUTCDate() - day + 1 + (week - 1) * 7);
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  return {
-    start: monday.toISOString().slice(0, 10),
-    end: sunday.toISOString().slice(0, 10),
-  };
-}
 
 export const WEEKLY_CHALLENGE_DEFS: WeeklyChallengeDef[] = [
   {
@@ -119,7 +88,6 @@ async function computeMetrics(uid: string, weekStart: string, weekEnd: string) {
   const skills = new Set<string>();
   snap.forEach((d) => {
     const c = d.data() as any;
-    // Weekly reward claims are completions too — exclude from quest metrics.
     if (c.kind === "weeklyChallenge") return;
     quests += 1;
     if (c.category) skills.add(String(c.category));
@@ -139,8 +107,8 @@ function progressFor(
 
 /** Ensure week doc exists and progress mirrors completion log. Safe for existing users. */
 export async function ensureWeeklyChallenges(uid: string): Promise<WeeklyChallengeState> {
-  const weekId = isoWeekId();
-  const { start, end } = isoWeekBounds(weekId);
+  const weekId = isoWeekIdLocal();
+  const { start, end } = isoWeekBoundsLocal(weekId);
   const ref = challengeDocRef(uid, weekId);
   const metrics = await computeMetrics(uid, start, end);
   const existing = await getDoc(ref);
@@ -176,13 +144,12 @@ export async function ensureWeeklyChallenges(uid: string): Promise<WeeklyChallen
 
 /**
  * Claim weekly challenge XP once. Uses deterministic completion doc to block duplicates.
- * Awards into the same character XP fields as quests.
  */
 export async function claimWeeklyChallengeReward(
   uid: string,
   challengeKey: string,
 ): Promise<{ xpEarned: number; character: any }> {
-  const weekId = isoWeekId();
+  const weekId = isoWeekIdLocal();
   const state = await ensureWeeklyChallenges(uid);
   const challenge = state.challenges.find((c) => c.key === challengeKey);
   if (!challenge) throw new Error("Challenge not found");
@@ -192,7 +159,7 @@ export async function claimWeeklyChallengeReward(
   const charRef = doc(db, "characters", uid);
   const claimRef = doc(db, "characters", uid, "completions", rewardClaimDocId(weekId, challengeKey));
   const weekRef = challengeDocRef(uid, weekId);
-  const today = dayKeyUtc();
+  const today = dayKeyLocal();
 
   const charSnap = await getDoc(charRef);
   if (!charSnap.exists()) throw new Error("Character not found");
@@ -239,6 +206,25 @@ export async function claimWeeklyChallengeReward(
     });
   });
 
+  // Refresh weekly achievements after claim
+  try {
+    const comps = await getDocs(collection(db, "characters", uid, "completions"));
+    const cats = await getDocs(collection(db, "characters", uid, "categories"));
+    const categoryLevels: Record<string, number> = {};
+    cats.forEach((d) => {
+      const c: any = d.data();
+      if (c.key) categoryLevels[c.key] = c.level ?? 1;
+    });
+    const updated = await getDoc(charRef);
+    await evaluateAchievements(uid, {
+      allComps: comps.docs.map((d) => d.data()),
+      character: updated.data(),
+      categoryLevels,
+    });
+  } catch (e) {
+    console.warn("achievement eval after weekly claim failed", e);
+  }
+
   const updated = await getDoc(charRef);
   const character: any = { id: uid, userId: uid, ...updated.data() };
   character.xpToNext = XP_TO_NEXT_LEVEL(character.level);
@@ -250,7 +236,6 @@ export async function claimWeeklyChallengeReward(
   return { xpEarned: awardedXp, character };
 }
 
-/** Best-effort progress refresh after a quest completion (no reward auto-claim). */
 export async function syncWeeklyChallengeProgress(uid: string): Promise<void> {
   try {
     await ensureWeeklyChallenges(uid);

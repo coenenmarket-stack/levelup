@@ -47,7 +47,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'name', 'photoURL', 'avatar', 'level', 'title', 'currentStreak',
           'legacyScore', 'categoryLevels', 'lifeGoal', 'showLifeGoal',
-          'inviteCode', 'facebookId', 'updatedAt'
+          'inviteCode', 'facebookId', 'updatedAt', 'showcaseAchievements'
         ]);
       allow delete: if isOwner(uid);
     }

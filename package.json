@@ -8,13 +8,13 @@
     "build": "tsx script/build.ts",
     "preview": "vite preview --port 5000",
     "check": "tsc",
+    "test:unit": "tsx --test client/src/lib/dayKey.test.ts client/src/lib/streak.test.ts client/src/lib/dailyPackAssign.test.ts client/src/lib/achievements.test.ts",
     "icons": "tsx script/generate-icons.ts",
     "icons:ios": "tsx script/sync-ios-app-icon.ts",
     "icons:verify": "tsx script/verify-app-icon.ts",
     "cap:sync": "npm run build && npx cap sync ios",
     "cap:open": "npx cap open ios",
     "cap:assets": "npx capacitor-assets generate --ios --iconBackgroundColor \"#0d1117\" --splashBackgroundColor \"#0d1117\" --splashBackgroundColorDark \"#0d1117\"",
-
     "functions:build": "npm --prefix functions run build"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "@capacitor/cli": "^8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
+    "@capacitor/local-notifications": "^8.2.1",
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",

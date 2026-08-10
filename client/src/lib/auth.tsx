@@ -112,6 +112,9 @@ type AuthCtx = {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateSettings: (fields: {
     notificationsEnabled?: boolean;
+    notifyDailyQuests?: boolean;
+    notifyStreakRisk?: boolean;
+    notifyWeeklyChallenges?: boolean;
     displayName?: string;
     showLifeGoal?: boolean;
   }) => Promise<void>;
@@ -127,6 +130,9 @@ type ProfileDoc = {
   provider: AuthProviderKey;
   onboarded: boolean;
   notificationsEnabled: boolean;
+  notifyDailyQuests?: boolean;
+  notifyStreakRisk?: boolean;
+  notifyWeeklyChallenges?: boolean;
   showLifeGoal?: boolean;
   facebookId?: string | null;
   createdAt?: any;
@@ -141,6 +147,9 @@ function buildMe(fbUser: FirebaseUser, profile: ProfileDoc): Me {
     emailVerified: fbUser.emailVerified,
     onboarded: profile.onboarded,
     notificationsEnabled: profile.notificationsEnabled,
+    notifyDailyQuests: profile.notifyDailyQuests !== false,
+    notifyStreakRisk: profile.notifyStreakRisk !== false,
+    notifyWeeklyChallenges: profile.notifyWeeklyChallenges !== false,
     showLifeGoal: profile.showLifeGoal !== false,
     facebookId: profile.facebookId ?? null,
     createdAt: typeof profile.createdAt === "string" ? profile.createdAt : new Date().toISOString(),
@@ -165,7 +174,10 @@ async function ensureProfile(fbUser: FirebaseUser, provider: AuthProviderKey): P
     displayName: fbUser.displayName ?? "",
     provider,
     onboarded: false,
-    notificationsEnabled: true,
+    notificationsEnabled: false,
+    notifyDailyQuests: true,
+    notifyStreakRisk: true,
+    notifyWeeklyChallenges: true,
     showLifeGoal: true,
     facebookId: null,
     createdAt: serverTimestamp(),
@@ -518,6 +530,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateSettings = async (fields: {
     notificationsEnabled?: boolean;
+    notifyDailyQuests?: boolean;
+    notifyStreakRisk?: boolean;
+    notifyWeeklyChallenges?: boolean;
     displayName?: string;
     showLifeGoal?: boolean;
   }) => {

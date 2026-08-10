@@ -49,10 +49,11 @@ function GatedApp() {
     }
   }, [isLoading, me, loc, setLoc]);
 
-  // Native invite deep links → Friends page
+  // Native invite deep links → Friends page; reschedule notifications on resume
   useEffect(() => {
     if (!me?.onboarded) return;
     let handle: { remove: () => Promise<void> } | null = null;
+    let resumeHandle: { remove: () => Promise<void> } | null = null;
     void (async () => {
       try {
         const { App: CapApp } = await import("@capacitor/app");
@@ -62,14 +63,31 @@ function GatedApp() {
           const code = parseInviteCodeFromUrl(url);
           if (code) setLoc(`/friends?code=${encodeURIComponent(code)}`);
         });
+        resumeHandle = await CapApp.addListener("appStateChange", async ({ isActive }) => {
+          if (!isActive || !me) return;
+          try {
+            const { syncNotificationsForUser } = await import("./lib/notifications");
+            await syncNotificationsForUser({
+              prefs: {
+                notificationsEnabled: !!me.notificationsEnabled,
+                notifyDailyQuests: me.notifyDailyQuests !== false,
+                notifyStreakRisk: me.notifyStreakRisk !== false,
+                notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+              },
+            });
+          } catch {
+            /* ignore */
+          }
+        });
       } catch {
         // web / unavailable
       }
     })();
     return () => {
       void handle?.remove();
+      void resumeHandle?.remove();
     };
-  }, [me?.onboarded, setLoc]);
+  }, [me, setLoc]);
 
   if (isLoading) return <FullScreenSpinner />;
 

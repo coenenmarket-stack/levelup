@@ -145,7 +145,7 @@ export default function Dashboard() {
             <Sparkles className="w-7 h-7 text-accent mx-auto mb-2" />
             <div className="font-semibold">Ready for today&apos;s missions</div>
             <div className="text-sm text-muted-foreground mt-1">
-              We&apos;ll pull five quests from the catalog, biased toward your weakest skills.
+              Three focused quests from the catalog, biased toward your weakest skills.
             </div>
             <button
               type="button"
