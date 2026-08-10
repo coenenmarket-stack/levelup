@@ -1593,6 +1593,38 @@ export const SIDE_HUSTLES: SideHustle[] = [
     ],
   },
   {
+    id: "junk-removal",
+    name: "Junk Removal",
+    tagline: "Haul away household clutter and charge for speed and muscle.",
+    category: "Local",
+    skillLevel: "Beginner",
+    startupCost: "$$",
+    timeToFirstDollar: "1-2 weeks",
+    relatedSkills: ["wealth", "health", "career"],
+    overview:
+      "Junk removal is a local labor business: customers pay to clear basements, garages, estates, and post-move leftovers. You can earn per load when you price for time, dump fees, and fuel—and keep margin by recycling metal or donating usable goods when allowed. Results vary by truck access, disposal costs in your area, and how well you quote before arriving.",
+    steps: [
+      "Confirm local dump, transfer-station, and donation rules (and any business license needs)",
+      "Start with a pickup truck or cargo van plus blankets, dollies, and heavy gloves",
+      "Quote by volume and stairs—not vague “cheap haul”—and collect a deposit when possible",
+      "Market on Craigslist, Facebook Marketplace, Nextdoor, and Google Business Profile",
+      "Separate metal, e-waste, and donate-able items to cut dump fees when legal",
+      "Photograph before/after and ask for reviews the same day",
+      "Upsell to recurring garage cleanouts or partner with realtors for turnover jobs",
+    ],
+    tools: ["Pickup truck or cargo van", "appliance dolly", "Facebook Marketplace", "Nextdoor", "Google Business Profile"],
+    pitfalls: [
+      "Underquoting stairs, heavy appliances, or hazardous items you cannot dump",
+      "Ignoring dump fees and fuel until the job is done",
+      "Accepting paint, chemicals, or tires without a disposal plan",
+    ],
+    relatedQuestIdeas: [
+      "Price and complete one small garage clear-out this week",
+      "Map dump fees and hours for your nearest transfer station",
+      "Collect three before/after photos and one Google review",
+    ],
+  },
+  {
     id: "freelance-web-dev",
     name: "Freelance Web Development",
     tagline: "Build and maintain sites for small businesses.",

@@ -428,6 +428,28 @@ export const CERTIFICATIONS: Certification[] = [
     ],
     relatedSkills: ["career", "mindset"],
   },
+  {
+    id: "isc2-cc",
+    name: "ISC² Certified in Cybersecurity (CC)",
+    provider: "ISC²",
+    category: "Tech",
+    cost: "Free",
+    time: "2-6 weeks",
+    payoff: "Entry cyber credential · path toward Security+ / SOC roles",
+    url: "https://www.isc2.org/certifications/cc",
+    overview:
+      "Entry-level ISC² certification covering security principles, incident response basics, network and access control concepts, and security operations vocabulary. Designed for people starting in cybersecurity rather than advanced practitioners. Confirm current exam fees and any first-attempt voucher eligibility on the official ISC² site before registering.",
+    whoItsFor:
+      "Career changers, students, and IT beginners who want a recognized first cyber credential before CompTIA Security+ or role-specific study.",
+    prerequisites: "None; basic IT familiarity helps",
+    howToStart: [
+      "Create an ISC² account and review the official CC exam outline",
+      "Study free or low-cost prep aligned to the domains (security principles, access controls, networking, incident response)",
+      "Register for the exam through ISC²’s authorized process and confirm any fee or voucher terms",
+      "Pass the exam and claim your Credly badge; plan a next step such as CompTIA Security+ if aiming at SOC roles",
+    ],
+    relatedSkills: ["career", "mindset"],
+  },
 
   // ── Business ──────────────────────────────────────────
   {
