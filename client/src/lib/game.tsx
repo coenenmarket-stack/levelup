@@ -135,14 +135,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
         console.warn("notification resync after quest failed", e);
       }
     },
-    onError: (e: any, _questId, context) => {
+    onError: (_e: any, _questId, context) => {
       if (context?.previousQuests) {
         qc.setQueryData(["/api/quests"], context.previousQuests);
       }
       if (context?.previousPack) {
         qc.setQueryData(["/api/daily-pack"], context.previousPack);
       }
-      toast({ title: "Couldn't complete", description: e.message, variant: "destructive" });
+      toast({
+        title: "Couldn't complete",
+        description: "Try again in a moment. If it already completed today, XP won't award twice.",
+        variant: "destructive",
+      });
     },
   });
 

@@ -73,6 +73,26 @@ workflows:
       - name: Sync Capacitor iOS
         script: npx cap sync ios
 
+      - name: Inject GoogleService-Info.plist (optional for core TF)
+        script: |
+          set -euo pipefail
+          DEST="$CM_BUILD_DIR/ios/App/App/GoogleService-Info.plist"
+          if [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$DEST"
+            test -s "$DEST"
+            echo "Wrote GoogleService-Info.plist ($(wc -c < "$DEST" | tr -d ' ') bytes)"
+          elif [ "${REQUIRE_GOOGLE_SERVICE_PLIST:-}" = "true" ]; then
+            echo "ERROR: REQUIRE_GOOGLE_SERVICE_PLIST=true but GOOGLE_SERVICE_INFO_PLIST_BASE64 is empty."
+            echo "Add the base64 plist to Codemagic group levelup-signing (secret)."
+            exit 1
+          else
+            echo "WARN: No GOOGLE_SERVICE_INFO_PLIST_BASE64 — JS Firebase Auth still works."
+            echo "Native FCM/APNs requires this file before enabling remotePushEnabled."
+            if [ -f "$DEST" ]; then
+              echo "Existing plist present at $DEST"
+            fi
+          fi
+
       - name: Verify web assets synced into iOS
         script: |
           set -euo pipefail

@@ -93,17 +93,24 @@ describe("notification prefs / quiet hours / rate limits", () => {
 });
 
 describe("deep links", () => {
-  it("maps types to safe routes", () => {
-    assert.equal(destinationToPath(destinationForNotificationType("friend_request")).startsWith("/friends"), true);
-    assert.equal(destinationToPath(destinationForNotificationType("party_invite")).startsWith("/social"), true);
+  it("maps retention types to safe routes", () => {
     assert.equal(destinationToPath(destinationForNotificationType("weekly_reward")).startsWith("/"), true);
+    assert.equal(destinationToPath(destinationForNotificationType("daily_reminder")), "/quests");
+    assert.equal(destinationToPath(destinationForNotificationType("streak_risk")), "/quests");
   });
 
-  it("rejects arbitrary URLs", () => {
+  it("rejects arbitrary URLs and launch-gated social routes", () => {
     assert.equal(resolveDeepLinkPath("https://evil.example/phish"), "/");
     assert.equal(resolveDeepLinkPath("/admin"), "/");
-    assert.equal(resolveDeepLinkPath("/friends"), "/friends");
-    assert.equal(resolveDeepLinkPath({ route: "/social", tab: "parties", id: "p1" }), "/social?tab=parties&id=p1");
+    // Default LAUNCH_FLAGS hide social — deep links must not bypass
+    assert.equal(resolveDeepLinkPath("/friends"), "/");
+    assert.equal(resolveDeepLinkPath("/invite"), "/");
+    assert.equal(resolveDeepLinkPath("/leaderboard"), "/");
+    assert.equal(resolveDeepLinkPath("/notifications"), "/");
+    assert.equal(resolveDeepLinkPath({ route: "/social", tab: "parties", id: "p1" }), "/");
+    assert.equal(destinationToPath(destinationForNotificationType("friend_request")), "/");
+    assert.equal(destinationToPath(destinationForNotificationType("party_invite")), "/");
+    assert.equal(destinationToPath(destinationForNotificationType("referral_activated")), "/");
   });
 });
 

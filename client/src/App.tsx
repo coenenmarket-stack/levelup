@@ -69,7 +69,14 @@ function GatedApp() {
         if (!isNativeApp()) return;
         handle = await CapApp.addListener("appUrlOpen", ({ url }) => {
           const code = parseInviteCodeFromUrl(url);
-          if (code) setLoc(`/friends?code=${encodeURIComponent(code)}`);
+          if (!code) return;
+          void import("./lib/featureFlags").then(({ LAUNCH_FLAGS }) => {
+            if (LAUNCH_FLAGS.friendsEnabled) {
+              setLoc(`/friends?code=${encodeURIComponent(code)}`);
+            } else {
+              setLoc("/");
+            }
+          });
         });
         resumeHandle = await CapApp.addListener("appStateChange", async ({ isActive }) => {
           if (!isActive || !me) return;

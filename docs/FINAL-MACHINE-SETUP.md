@@ -67,17 +67,17 @@ Safer/simpler for this project: **deploy from your machine** after `firebase log
 1. Create or obtain **APNs Auth Key** (`.p8`) in Apple Developer → Keys.
 2. Record **Key ID** and confirm **Team ID**.
 3. Confirm App ID `com.coenenmarket.leveluplife` has **Push Notifications**.
-4. In Xcode **or** Apple portal capability sync for the App: add Push Notifications; enable Background Modes → Remote notifications if required.
-5. Confirm `ios/App/App/App.entitlements` gains `aps-environment` after signing/capability (currently entitlements only list Sign in with Apple — Push not verified in repo).
-6. Do **not** change bundle ID casually.
+4. In Apple Developer (App ID capabilities) add **Push Notifications**; enable Background Modes → Remote notifications if required. Codemagic signing profiles must include the capability — do **not** use Xcode Archive as the release path.
+5. Confirm signed build entitlements gain `aps-environment` (`development` / `production` per profile).
+6. Do **not** change bundle id (`com.coenenmarket.leveluplife`) or signing team unless intentional.
 
 ### C. Firebase iOS + GoogleService-Info.plist
 
 1. Firebase Console → Project settings → iOS app for `com.coenenmarket.leveluplife`.
 2. Download the real **GoogleService-Info.plist** (do not fabricate).
-3. **Preferred for Codemagic:** store as a Codemagic secure file / base64 env var and decode into:
+3. **Preferred for Codemagic:** set secret env `GOOGLE_SERVICE_INFO_PLIST_BASE64` (group `levelup-signing`). The `ios-testflight-launch` workflow decodes it to:
    **`ios/App/App/GoogleService-Info.plist`**
-   before `npx cap sync ios` / Xcode archive.
+   after `npx cap sync ios`.
 4. Repo currently has **no** committed plist — keep it that way unless team policy explicitly allows committing non-secret Firebase iOS config.
 5. Cloud Messaging → upload APNs `.p8` (Key ID + Team ID).
 
@@ -96,9 +96,10 @@ Do **not** use `ios-testflight-main` for launch icon/Google auth.
 6. Confirm `BUNDLE_ID=com.coenenmarket.leveluplife`.
 7. Add secure env / files:
    - `CERTIFICATE_PRIVATE_KEY` (required by YAML)
-   - GoogleService-Info.plist secure file → write to `ios/App/App/GoogleService-Info.plist` (add a script step if not already in UI)
+   - Optional: `GOOGLE_SERVICE_INFO_PLIST_BASE64` → decoded to `ios/App/App/GoogleService-Info.plist`
+   - Optional: `REQUIRE_GOOGLE_SERVICE_PLIST=true` when native FCM/APNs must be present
    - Optional later: Firebase token / Resend only if CI deploy is adopted (not recommended yet)
-8. Pipeline already runs: `npm ci` → `npm run check` → `npm run build` → `npx cap sync ios` → icons → `agvtool` version **1.0.1** + `BUILD_NUMBER` → signed IPA → ASC upload.
+8. Pipeline already runs: `npm ci` → `npm run check` → `npm run build` → `npx cap sync ios` → optional plist inject → icons → `agvtool` version **1.0.1** + `BUILD_NUMBER` → signed IPA → ASC upload.
 9. Publishing: upload only; internal TestFlight (see YAML comments — no external beta auto-submit).
 10. Verify build in App Store Connect → install on physical iPhone → run `docs/RELEASE-QA-CHECKLIST.md`.
 
@@ -154,15 +155,56 @@ Apple Key ID / Team ID / Issuer ID live in Apple + Codemagic/Firebase consoles �
 
 ---
 
-## GoogleService-Info.plist strategy
+## MUST COMPLETE BEFORE TESTFLIGHT
+
+### Required for core build (solo RPG + local reminders)
+
+1. Codemagic app connected to this repo.
+2. Workflow **`ios-testflight-launch`** targeting branch **`cursor/app-store-launch-assets`** (after consolidation merge) or the approved release tip.
+3. Environment group **`levelup-signing`** with secret **`CERTIFICATE_PRIVATE_KEY`**.
+4. App Store Connect integration named **`codemagic`** in Codemagic UI.
+5. Bundle ID **`com.coenenmarket.leveluplife`** matches Apple App ID.
+6. Green local gate on the commit: `npm run test:unit`, `npm run check`, `npm run build`, `npx cap sync ios`, functions build.
+7. ASC app record exists so Codemagic can upload the IPA.
+
+Core TestFlight does **not** require: APNs key, Resend, social CF deploy, or `GOOGLE_SERVICE_INFO_PLIST_BASE64` (JS Firebase config is embedded). Remote push will need the plist later.
+
+### Required only for AI Coach personalization (non-fallback replies)
+
+1. Blaze project if not already.
+2. `GEMINI_API_KEY` Firebase Functions secret set.
+3. `npx firebase deploy --only functions:aiCoach`
+4. Verify callable from a signed-in device (fallback copy is OK until then; UI stays RELEASE).
+
+### Required only for remote push
+
+1. APNs Auth Key `.p8` + Key ID + Team ID uploaded to Firebase Cloud Messaging.
+2. Push Notifications capability / `aps-environment` on the signed profile.
+3. `GOOGLE_SERVICE_INFO_PLIST_BASE64` in Codemagic (writes `ios/App/App/GoogleService-Info.plist`). Optionally set `REQUIRE_GOOGLE_SERVICE_PLIST=true`.
+4. Deploy social/notification Cloud Functions that send pushes.
+5. Flip `LAUNCH_FLAGS.remotePushEnabled` (and related social/inbox flags as verified) then rebuild.
+
+### Required only for email
+
+1. Resend account + `RESEND_API_KEY` Functions secret.
+2. Deploy `weeklyProgressEmailJob` (+ related helpers).
+3. Flip `LAUNCH_FLAGS.emailNotificationsEnabled` then rebuild.
+
+---
+
+## GoogleService-Info.plist strategy (Codemagic)
 
 | Option | Recommendation |
 |--------|----------------|
-| Commit to repo | Only if team policy allows non-secret iOS Firebase config |
-| Codemagic secure file → `ios/App/App/GoogleService-Info.plist` | **Preferred** |
-| Base64 env decoded in script | Acceptable alternative |
+| Commit to repo | Only if team policy allows |
+| `GOOGLE_SERVICE_INFO_PLIST_BASE64` secure env → decode in `ios-testflight-launch` | **Preferred** |
+| Set `REQUIRE_GOOGLE_SERVICE_PLIST=true` | Fail the build when enabling remote push / native FCM |
 
 Expected destination: **`ios/App/App/GoogleService-Info.plist`**.
+
+Script lives in `codemagic.yaml` after `npx cap sync ios`. Missing value logs a WARN and continues (core TF). Missing value with `REQUIRE_GOOGLE_SERVICE_PLIST=true` fails clearly.
+
+Capability / Push entitlement work is done in Apple Developer + signing profiles Codemagic fetches — **not** via Xcode archive/upload. Xcode may be used only to toggle capabilities on the App ID if the portal UI is insufficient; it is not the release pipeline.
 
 ---
 
@@ -217,8 +259,8 @@ Classify cleanup as **post-release** unless a path is proven unused and safe.
 
 | Item | Class |
 |------|-------|
-| CF `generateQuests` (Gemini pack) | **post-release** — unused by client daily pack; do not delete CF blindly |
-| Orphan `/shop` rewards route (not in menu) | **HIDE/DEFER** nav; keep code unless product drops rewards |
+| CF `generateQuests` (Gemini pack) | **post-release** — client daily pack uses catalog `ensureCatalogDailyPack`, not this CF |
+| `/shop` rewards route | **HIDE** via `rewardsShopEnabled=false` + FeatureUnavailable |
 | Stale `DEPLOY.md` Spark/Coming Soon Coach copy | **safe now** (doc fix) |
 | Invite hidden dev activate button | **safe now** (removed in consolidation) |
 | Tip jar | Not present in current UI — confirm stays gone |

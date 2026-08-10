@@ -22,6 +22,8 @@ export type LaunchFeatureFlags = {
   notificationInboxEnabled: boolean;
   /** Social card on Home */
   socialHomeCardEnabled: boolean;
+  /** XP rewards shop (/shop) — orphaned; keep off for launch */
+  rewardsShopEnabled: boolean;
 };
 
 /**
@@ -38,6 +40,7 @@ export const LAUNCH_FLAGS: LaunchFeatureFlags = {
   leaderboardsEnabled: false,
   notificationInboxEnabled: false,
   socialHomeCardEnabled: false,
+  rewardsShopEnabled: false,
 };
 
 export function isFeatureEnabled(flag: keyof LaunchFeatureFlags): boolean {
@@ -52,4 +55,29 @@ export function isSocialSurfaceEnabled(): boolean {
     LAUNCH_FLAGS.partiesEnabled ||
     LAUNCH_FLAGS.leaderboardsEnabled
   );
+}
+
+/**
+ * Whether an in-app route is launch-enabled.
+ * Used by deep links so stale push/inbox payloads cannot bypass flags.
+ */
+export function isLaunchRouteEnabled(pathname: string): boolean {
+  const path = (pathname.split("?")[0]?.split("#")[0] || "/").replace(/\/$/, "") || "/";
+  switch (path) {
+    case "/friends":
+    case "/invite":
+      return LAUNCH_FLAGS.friendsEnabled;
+    case "/social":
+      return LAUNCH_FLAGS.socialChallengesEnabled || LAUNCH_FLAGS.partiesEnabled;
+    case "/leaderboard":
+      return LAUNCH_FLAGS.leaderboardsEnabled;
+    case "/notifications":
+      return LAUNCH_FLAGS.notificationInboxEnabled;
+    case "/shop":
+      return LAUNCH_FLAGS.rewardsShopEnabled;
+    case "/coach":
+      return LAUNCH_FLAGS.aiCoachEnabled;
+    default:
+      return true;
+  }
 }

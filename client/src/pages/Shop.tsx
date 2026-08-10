@@ -9,12 +9,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 const REWARD_ICONS = ["☕", "🎬", "🛠️", "🏞️", "🍔", "🎮", "📚", "🎁", "💎", "🍷", "🛒", "✈️"];
 
 export default function Shop() {
   const { character } = useGame();
-  const { data: rewards } = useQuery<Reward[]>({ queryKey: ["/api/rewards"] });
+  const gated = !LAUNCH_FLAGS.rewardsShopEnabled;
+  const { data: rewards } = useQuery<Reward[]>({
+    queryKey: ["/api/rewards"],
+    enabled: !gated,
+  });
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -25,13 +31,28 @@ export default function Shop() {
       qc.invalidateQueries({ queryKey: ["/api/character"] });
       toast({ title: `${data.reward.icon}  Redeemed`, description: `Enjoy your ${data.reward.name}.` });
     },
-    onError: (e: any) => toast({ title: "Can't redeem yet", description: e.message, variant: "destructive" }),
+    onError: () =>
+      toast({
+        title: "Can't redeem yet",
+        description: "Check your spendable XP and try again.",
+        variant: "destructive",
+      }),
   });
 
   const delMut = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/rewards/${id}`); },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/rewards"] }),
   });
+
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="Rewards shop"
+        body="The rewards shop stays off for this release. Quests, streaks, and XP still work from Home."
+        testId="shop-unavailable"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

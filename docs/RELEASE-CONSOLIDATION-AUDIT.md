@@ -24,6 +24,7 @@ Based on merged Phase 4.5 tip `22605b6` on `cursor/app-store-launch-assets`.
 - Remote push opt-in / registration
 - Email preference UI
 - Notification inbox
+- Rewards shop (`/shop`)
 
 ## DEFER
 

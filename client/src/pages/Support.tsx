@@ -1,5 +1,6 @@
 import { HelpCircle, Mail, MessageCircle, BookOpen, Shield } from "lucide-react";
 import { Link } from "wouter";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 const FAQS = [
   {
@@ -54,14 +55,16 @@ export default function SupportPage() {
             <Shield className="w-4 h-4 text-primary" />
             Settings
           </Link>
-          <Link
-            href="/coach"
-            className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
-            data-testid="link-help-coach"
-          >
-            <MessageCircle className="w-4 h-4 text-primary" />
-            AI Coach
-          </Link>
+          {LAUNCH_FLAGS.aiCoachEnabled ? (
+            <Link
+              href="/coach"
+              className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"
+              data-testid="link-help-coach"
+            >
+              <MessageCircle className="w-4 h-4 text-primary" />
+              AI Coach
+            </Link>
+          ) : null}
           <Link
             href="/mindset"
             className="rounded-xl bg-secondary/50 border border-card-border px-3 py-3 text-sm font-semibold hover-elevate flex items-center gap-2"

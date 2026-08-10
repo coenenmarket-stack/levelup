@@ -434,11 +434,29 @@ function PrimaryButton({ children, submitting, testId, onClick }: { children: Re
 }
 
 function parseError(err: any): string {
+  const code = String(err?.code ?? "");
+  if (code.includes("auth/wrong-password") || code.includes("auth/invalid-credential")) {
+    return "Email or password looks wrong.";
+  }
+  if (code.includes("auth/user-not-found")) return "No account found for that email.";
+  if (code.includes("auth/email-already-in-use")) return "That email already has an account.";
+  if (code.includes("auth/too-many-requests")) return "Too many attempts. Wait a minute and try again.";
+  if (code.includes("auth/network-request-failed")) return "Network issue. Check your connection and try again.";
+  if (code.includes("auth/popup-closed-by-user")) return "Sign-in was cancelled.";
+
   const msg = err?.message ?? "Something went wrong";
-  // err.message is typically "400: {json}"
   const m = String(msg).match(/^\d+:\s*(\{.*\})$/);
   if (m) {
-    try { return JSON.parse(m[1]).error ?? msg; } catch { /* ignore */ }
+    try {
+      const parsed = JSON.parse(m[1]).error ?? msg;
+      if (/firebase|firestore|functions\//i.test(String(parsed))) {
+        return "Something went wrong. Please try again.";
+      }
+      return parsed;
+    } catch { /* ignore */ }
+  }
+  if (/firebase|firestore|functions\/|stack|undefined|null is not/i.test(String(msg))) {
+    return "Something went wrong. Please try again.";
   }
   return msg;
 }

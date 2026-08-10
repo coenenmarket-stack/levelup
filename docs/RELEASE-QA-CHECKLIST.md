@@ -144,6 +144,16 @@ Direct deep links to gated routes should show **Feature unavailable**, not a cra
 
 ---
 
+## Shop / deferred surfaces
+
+| Test | Expected | Blocked by |
+|------|----------|------------|
+| Direct `/shop` | FeatureUnavailable while `rewardsShopEnabled=false` | — |
+| Stale social deep link | Resolves to Home (flags off) | — |
+| Direct `/friends` etc. | FeatureUnavailable | — |
+
+---
+
 ## Sign-off
 
 | Role | Name | Date | Result |

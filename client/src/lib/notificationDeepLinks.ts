@@ -1,6 +1,9 @@
 /**
  * Safe deep-link routing for push + inbox — allowlisted destinations only.
+ * Hidden launch surfaces resolve to Home so flags cannot be bypassed.
  */
+
+import { isLaunchRouteEnabled } from "./featureFlags";
 
 export type DeepLinkDestination =
   | { route: "/friends"; tab?: "requests" }
@@ -47,6 +50,11 @@ export type NotificationType =
   | "daily_reminder"
   | "generic";
 
+function gatedRoute<T extends DeepLinkDestination>(dest: T): DeepLinkDestination {
+  if (!isLaunchRouteEnabled(dest.route)) return { route: "/" };
+  return dest;
+}
+
 /** Map notification type (+ optional payload) to a safe in-app destination. */
 export function destinationForNotificationType(
   type: string,
@@ -55,17 +63,17 @@ export function destinationForNotificationType(
   switch (type) {
     case "friend_request":
     case "friend_accepted":
-      return { route: "/friends", tab: "requests" };
+      return gatedRoute({ route: "/friends", tab: "requests" });
     case "shared_challenge_invite":
     case "shared_challenge_accepted":
     case "shared_challenge_complete":
-      return { route: "/social", tab: "challenges", id: payload.challengeId };
+      return gatedRoute({ route: "/social", tab: "challenges", id: payload.challengeId });
     case "party_invite":
     case "party_joined":
     case "party_challenge_complete":
-      return { route: "/social", tab: "parties", id: payload.partyId };
+      return gatedRoute({ route: "/social", tab: "parties", id: payload.partyId });
     case "referral_activated":
-      return { route: "/invite" };
+      return gatedRoute({ route: "/invite" });
     case "achievement_milestone":
       return { route: "/achievements" };
     case "weekly_reward":
@@ -86,20 +94,23 @@ export function destinationForNotificationType(
 
 /**
  * Parse server/client deep-link payload into a wouter path.
- * Rejects arbitrary URLs / unknown routes.
+ * Rejects arbitrary URLs / unknown routes / launch-gated routes.
  */
 export function resolveDeepLinkPath(
   raw: { route?: string; tab?: string; id?: string; hash?: string } | string | null | undefined,
 ): string {
   if (!raw) return "/";
   if (typeof raw === "string") {
-    // Only allow relative hash routes like /friends or /social?tab=parties
     if (raw.startsWith("http:") || raw.startsWith("https:") || raw.includes("://")) return "/";
     const pathOnly = raw.split("?")[0]?.split("#")[0] ?? "/";
     if (!ALLOWED_ROUTES.has(pathOnly)) return "/";
+    if (!isLaunchRouteEnabled(pathOnly)) return "/";
     return raw.startsWith("/") ? raw : "/";
   }
-  const route = raw.route && ALLOWED_ROUTES.has(raw.route) ? raw.route : "/";
+  const routeCandidate = raw.route && ALLOWED_ROUTES.has(raw.route) ? raw.route : "/";
+  const route = isLaunchRouteEnabled(routeCandidate) ? routeCandidate : "/";
+  // Gated social/push destinations fall back to Home without leftover query params.
+  if (route === "/" && routeCandidate !== "/") return "/";
   const params = new URLSearchParams();
   if (raw.tab && /^[a-z0-9_-]+$/i.test(raw.tab)) params.set("tab", raw.tab);
   if (raw.id && /^[a-zA-Z0-9_-]{1,64}$/.test(raw.id)) params.set("id", raw.id);

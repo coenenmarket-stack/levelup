@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Achievement } from "@/lib/types";
 import { CheckCircle2, Lock } from "lucide-react";
+import { isSocialSurfaceEnabled } from "@/lib/featureFlags";
 
 const rarities = ["legendary", "epic", "rare", "common"] as const;
 
@@ -13,15 +14,27 @@ function achievementState(a: Achievement): State {
   return "locked";
 }
 
+function isSocialAchievement(a: Achievement): boolean {
+  const cat = String((a as { category?: string }).category ?? "").toLowerCase();
+  if (cat === "social") return true;
+  const key = String(a.key ?? "");
+  return /friend|referral|party|shared-challenge|challenge-duo|team-player|accountability/i.test(key);
+}
+
 export default function Achievements() {
   const { data: achs } = useQuery<Achievement[]>({ queryKey: ["/api/achievements"] });
-  const unlocked = (achs ?? []).filter((a) => a.unlocked).length;
-  const total = achs?.length ?? 0;
+  const visible = useMemo(() => {
+    const list = achs ?? [];
+    if (isSocialSurfaceEnabled()) return list;
+    return list.filter((a) => !isSocialAchievement(a));
+  }, [achs]);
+  const unlocked = visible.filter((a) => a.unlocked).length;
+  const total = visible.length;
 
   const byRarity = useMemo(() => {
     const map: Record<string, Achievement[]> = {};
     for (const r of rarities) map[r] = [];
-    for (const a of achs ?? []) {
+    for (const a of visible) {
       const r = a.rarity in map ? a.rarity : "common";
       map[r].push(a);
     }
@@ -34,7 +47,7 @@ export default function Achievements() {
       });
     }
     return map;
-  }, [achs]);
+  }, [visible]);
 
   return (
     <div className="space-y-5">
