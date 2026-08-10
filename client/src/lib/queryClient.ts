@@ -416,9 +416,18 @@ async function callGenerateQuests(uid: string, refresh: boolean) {
     ],
   };
 
-  function offlineBiasedPack(): PackQuest[] {
-    // Prefer doubling health as a generic "weakest" when offline with no levels.
-    const slots = ["health", "health", "wealth", "career", "family"];
+  /** Mirror CF weakest-skill bias: 2× weakest, 1× next three, 0× strongest. */
+  function biasedSlotsFromLevels(catLevels: Record<string, number>): string[] {
+    const keys = [...PACK_CATEGORY_ORDER];
+    const sorted = [...keys].sort(
+      (a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b),
+    );
+    return [sorted[0], sorted[0], sorted[1], sorted[2], sorted[3]];
+  }
+
+  function offlineBiasedPack(catLevels?: Record<string, number>): PackQuest[] {
+    const levels = catLevels ?? Object.fromEntries(PACK_CATEGORY_ORDER.map((k) => [k, 1]));
+    const slots = biasedSlotsFromLevels(levels);
     const used: Record<string, number> = {};
     return slots.map((k) => {
       const idx = used[k] ?? 0;
@@ -437,8 +446,17 @@ async function callGenerateQuests(uid: string, refresh: boolean) {
     pack = res.data;
   } catch (e: any) {
     console.error("generateQuests call failed", e);
+    let catLevels: Record<string, number> | undefined;
+    try {
+      const cats = await readCategories(uid);
+      catLevels = Object.fromEntries(
+        (cats as Array<{ key: string; level?: number }>).map((c) => [c.key, c.level ?? 1]),
+      );
+    } catch {
+      /* use default levels */
+    }
     pack = {
-      quests: offlineBiasedPack(),
+      quests: offlineBiasedPack(catLevels),
       cached: false,
       fallback: true,
     };

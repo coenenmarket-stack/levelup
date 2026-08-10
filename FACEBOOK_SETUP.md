@@ -1,6 +1,10 @@
 # Facebook + Apple Login setup
 
-Level Up Life now includes **Continue with Facebook**, **Continue with Apple**, and **Find Facebook friends** on the Friends page. Invite codes remain the primary way to add anyone.
+**Phase 1 (shipped):** invite codes + share links on Friends. That is the primary discovery path.
+
+**Phase 2 (optional):** Facebook Login, Apple Sign In (App Store 4.8 when offering other social logins), and **Find Facebook friends** via Graph `user_friends` after Meta App Review. Leave `VITE_FACEBOOK_APP_ID` unset to keep Facebook UI hidden.
+
+Invite codes remain the primary way to add anyone forever — Facebook Graph is sparse.
 
 ## 1. Meta (Facebook) Developer App
 
