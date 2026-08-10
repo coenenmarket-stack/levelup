@@ -155,9 +155,18 @@ export default function SettingsPage() {
       <SettingsGroup title="Preferences">
         <ToggleRow
           label="Notifications"
-          sub="Daily quest reminders and streak alerts"
+          sub="Daily quest reminders and streak alerts (when supported on this device)"
           value={me.notificationsEnabled}
-          onChange={(v) => updateSettings({ notificationsEnabled: v })}
+          onChange={async (v) => {
+            await updateSettings({ notificationsEnabled: v });
+            try {
+              const { requestNotificationPermission, syncDailyReminderSchedule } = await import("@/lib/notifications");
+              if (v) await requestNotificationPermission();
+              await syncDailyReminderSchedule(v);
+            } catch (e) {
+              console.warn("notification sync skipped", e);
+            }
+          }}
           testId="toggle-notifications"
         />
         <ToggleRow

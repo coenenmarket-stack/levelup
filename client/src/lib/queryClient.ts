@@ -17,6 +17,11 @@ import {
   completeQuestLocal,
   redeemRewardLocal,
 } from "./gameLogic";
+import { ensureCatalogDailyPack } from "./dailyPackLocal";
+import {
+  ensureWeeklyChallenges,
+  claimWeeklyChallengeReward,
+} from "./weeklyChallenges";
 
 // ------------------------------------------------------------
 // Helpers
@@ -381,91 +386,16 @@ async function callRedeemReward(uid: string, rewardId: string) {
 }
 
 /**
- * Calls the deployed `generateQuests` Cloud Function (Gemini-backed).
- * Returns a personalized daily quest pack (weakest-skill bias).
- * If `refresh=true`, ignores today's cache and regenerates incomplete slots.
+ * Catalog-driven daily pack (750-quest library, weakest-skill bias).
+ * Writes characters/{uid}/dailyPacks/{date} + pack_* quest docs.
+ * If `refresh=true`, keeps completed slots and replaces the rest.
  */
 async function callGenerateQuests(uid: string, refresh: boolean) {
-  type PackQuest = {
-    id?: string;
-    category: string;
-    title: string;
-    description: string;
-    difficulty: "easy" | "medium" | "hard";
-    xpReward: number;
-    isDaily?: boolean;
-  };
-  type Pack = { quests: PackQuest[]; cached?: boolean; fallback?: boolean; allComplete?: boolean };
-
-  const FALLBACK_BY_SKILL: Record<string, PackQuest[]> = {
-    health: [
-      { category: "health", title: "30-minute brisk walk", description: "Move your body and clear your head.", difficulty: "easy", xpReward: 10 },
-      { category: "health", title: "Drink water and stretch", description: "Hydrate and loosen up for 5 minutes.", difficulty: "easy", xpReward: 10 },
-    ],
-    wealth: [
-      { category: "wealth", title: "Log today's spending", description: "Track every dollar that left your wallet.", difficulty: "easy", xpReward: 10 },
-    ],
-    career: [
-      { category: "career", title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 25 },
-    ],
-    family: [
-      { category: "family", title: "Call someone you love", description: "Five minutes can change a day.", difficulty: "easy", xpReward: 10 },
-    ],
-    mindset: [
-      { category: "mindset", title: "10 pages of a good book", description: "Compound your mind.", difficulty: "easy", xpReward: 10 },
-    ],
-  };
-
-  /** Mirror CF weakest-skill bias: 2× weakest, 1× next three, 0× strongest. */
-  function biasedSlotsFromLevels(catLevels: Record<string, number>): string[] {
-    const keys = [...PACK_CATEGORY_ORDER];
-    const sorted = [...keys].sort(
-      (a, b) => (catLevels[a] ?? 1) - (catLevels[b] ?? 1) || a.localeCompare(b),
-    );
-    return [sorted[0], sorted[0], sorted[1], sorted[2], sorted[3]];
-  }
-
-  function offlineBiasedPack(catLevels?: Record<string, number>): PackQuest[] {
-    const levels = catLevels ?? Object.fromEntries(PACK_CATEGORY_ORDER.map((k) => [k, 1]));
-    const slots = biasedSlotsFromLevels(levels);
-    const used: Record<string, number> = {};
-    return slots.map((k) => {
-      const idx = used[k] ?? 0;
-      used[k] = idx + 1;
-      const opts = FALLBACK_BY_SKILL[k] ?? FALLBACK_BY_SKILL.mindset;
-      return { ...opts[Math.min(idx, opts.length - 1)] };
-    });
-  }
-
-  let pack: Pack;
-  try {
-    const { httpsCallable } = await import("firebase/functions");
-    const { functions } = await import("./firebase");
-    const fn = httpsCallable<{ refresh?: boolean }, Pack>(functions, "generateQuests");
-    const res = await fn({ refresh });
-    pack = res.data;
-  } catch (e: any) {
-    console.error("generateQuests call failed", e);
-    let catLevels: Record<string, number> | undefined;
-    try {
-      const cats = await readCategories(uid);
-      catLevels = Object.fromEntries(
-        (cats as Array<{ key: string; level?: number }>).map((c) => [c.key, c.level ?? 1]),
-      );
-    } catch {
-      /* use default levels */
-    }
-    pack = {
-      quests: offlineBiasedPack(catLevels),
-      cached: false,
-      fallback: true,
-    };
-  }
-
-  const withIds = pack.quests.map((q, i) => ({
+  const pack = await ensureCatalogDailyPack(uid, refresh);
+  const withIds = pack.quests.map((q) => ({
     ...q,
-    id: q.id ?? `fallback-${i}`,
-    isDaily: q.isDaily ?? true,
+    id: q.id,
+    isDaily: true,
   }));
   const merged = await mergePackWithCompletions(uid, withIds);
   return { ...pack, quests: merged };
@@ -513,6 +443,7 @@ async function route(method: string, url: string, body: any): Promise<any> {
       case "/api/rewards": return readRewards(uid);
       case "/api/stats": return readStats(uid);
       case "/api/daily-pack": return callGenerateQuests(uid, false);
+      case "/api/weekly-challenges": return ensureWeeklyChallenges(uid);
     }
   }
 
@@ -528,6 +459,9 @@ async function route(method: string, url: string, body: any): Promise<any> {
     if (cleanUrl === "/api/rewards") return createReward(uid, body);
     if (cleanUrl === "/api/coach") return callCoach(body?.message ?? "");
     if (cleanUrl === "/api/daily-pack") return callGenerateQuests(uid, !!body?.refresh);
+    if (cleanUrl === "/api/weekly-challenges/claim") {
+      return claimWeeklyChallengeReward(uid, String(body?.challengeKey ?? ""));
+    }
     // /api/quests/:id/complete
     const completeMatch = cleanUrl.match(/^\/api\/quests\/([^/]+)\/complete$/);
     if (completeMatch) return callCompleteQuest(uid, completeMatch[1]);

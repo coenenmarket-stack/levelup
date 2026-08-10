@@ -18,6 +18,8 @@ import { TodaysMissionCard } from "@/components/dashboard/TodaysMission";
 import { TodaysFocusCard } from "@/components/dashboard/TodaysFocus";
 import { MoreToDoStrip } from "@/components/dashboard/MoreToDoStrip";
 import { ContinueJourney } from "@/components/dashboard/ContinueJourney";
+import { WeeklyChallengesCard } from "@/components/dashboard/WeeklyChallengesCard";
+import { StreakStatusStrip } from "@/components/dashboard/StreakStatusStrip";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
@@ -92,6 +94,11 @@ export default function Dashboard() {
           <span>Total: <span className="text-foreground font-num">{character.totalXp.toLocaleString()}</span> XP</span>
           <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
         </div>
+        <StreakStatusStrip
+          currentStreak={character.currentStreak}
+          longestStreak={character.longestStreak}
+          lastCompletionDate={character.lastCompletionDate}
+        />
       </motion.section>
 
       {/* 2. Today's Mission */}
@@ -136,20 +143,53 @@ export default function Dashboard() {
         ) : packQuests.length === 0 ? (
           <div className="surface rounded-xl p-6 text-center">
             <Sparkles className="w-7 h-7 text-accent mx-auto mb-2" />
-            <div className="font-semibold">Your daily pack is being prepared</div>
-            <div className="text-sm text-muted-foreground mt-1">Tap Refresh to generate today&apos;s quests.</div>
+            <div className="font-semibold">Ready for today&apos;s missions</div>
+            <div className="text-sm text-muted-foreground mt-1">
+              We&apos;ll pull five quests from the catalog, biased toward your weakest skills.
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshMut.mutate()}
+              disabled={refreshMut.isPending}
+              className="mt-3 text-sm text-primary hover-elevate rounded-lg px-3 py-1.5"
+              data-testid="button-generate-pack"
+            >
+              Generate today&apos;s pack
+            </button>
           </div>
+        ) : pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0) ? (
+          <>
+            <div className="surface rounded-xl p-4 border border-accent/30" data-testid="banner-daily-clear">
+              <div className="font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent" />
+                Daily missions clear
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                Legendary work. Come back tomorrow for a fresh catalog pack — or tackle a side quest below.
+              </div>
+            </div>
+            <QuestSection
+              title="Completed Today"
+              count={packCompleted.length}
+              collapsible
+              data-testid="section-pack-completed"
+            >
+              {packCompleted.map((q) => (
+                <QuestRow
+                  key={q.id}
+                  quest={q}
+                  variant="completed"
+                />
+              ))}
+            </QuestSection>
+          </>
         ) : (
           <>
             {/* 5. Active Quests */}
             <QuestSection
               title="Active Quests"
               count={packActive.length}
-              emptyMessage={
-                pack?.allComplete || packProgress.remaining === 0
-                  ? "All missions complete — legendary work today."
-                  : "All daily quests cleared."
-              }
+              emptyMessage="All daily quests cleared."
               data-testid="section-pack-active"
             >
               {packActive.map((q) => (
@@ -182,6 +222,9 @@ export default function Dashboard() {
           </>
         )}
       </section>
+
+      {/* Weekly challenges */}
+      <WeeklyChallengesCard />
 
       {/* More to do */}
       <MoreToDoStrip />

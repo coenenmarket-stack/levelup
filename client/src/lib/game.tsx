@@ -90,6 +90,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       qc.invalidateQueries({ queryKey: ["/api/completions"] });
       qc.invalidateQueries({ queryKey: ["/api/achievements"] });
       qc.invalidateQueries({ queryKey: ["/api/stats"] });
+      qc.invalidateQueries({ queryKey: ["/api/weekly-challenges"] });
       qc.invalidateQueries({ queryKey: ["friend-activity"] });
 
       // Friends activity + public profile (best-effort)

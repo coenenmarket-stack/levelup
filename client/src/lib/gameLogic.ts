@@ -13,6 +13,8 @@ import {
   query, where, limit, runTransaction,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { dayKeyUtc, streakXpMultiplier } from "./streak";
+import { syncWeeklyChallengeProgress } from "./weeklyChallenges";
 
 // ============================================================================
 // Game constants (mirrors of functions/src/index.ts)
@@ -192,14 +194,14 @@ const ACHIEVEMENT_TEMPLATES = [
   { key: "first-workout", name: "First Workout", description: "Complete your first health quest", icon: "💪", rarity: "common", category: "health", target: 1 },
   { key: "10-workouts", name: "Gym Rat", description: "Complete 10 health quests", icon: "🏋️", rarity: "rare", category: "health", target: 10 },
   { key: "100-workouts", name: "Iron Will", description: "Complete 100 health quests", icon: "🥇", rarity: "epic", category: "health", target: 100 },
-  { key: "save-100", name: "Save First $100", description: "Complete 4 finance quests", icon: "💵", rarity: "common", category: "finance", target: 4 },
-  { key: "save-1000", name: "Save First $1,000", description: "Complete 20 finance quests", icon: "💰", rarity: "rare", category: "finance", target: 20 },
-  { key: "debt-crusher", name: "Debt Crusher", description: "Complete 50 finance quests", icon: "⚒️", rarity: "epic", category: "finance", target: 50 },
+  { key: "save-100", name: "Save First $100", description: "Complete 4 wealth quests", icon: "💵", rarity: "common", category: "wealth", target: 4 },
+  { key: "save-1000", name: "Save First $1,000", description: "Complete 20 wealth quests", icon: "💰", rarity: "rare", category: "wealth", target: 20 },
+  { key: "debt-crusher", name: "Debt Crusher", description: "Complete 50 wealth quests", icon: "⚒️", rarity: "epic", category: "wealth", target: 50 },
   { key: "first-cert", name: "Complete Certification", description: "Complete a hard career quest", icon: "🎓", rarity: "rare", category: "career", target: 1 },
   { key: "first-promo", name: "First Promotion", description: "Complete 25 career quests", icon: "📈", rarity: "epic", category: "career", target: 25 },
   { key: "family-bonded", name: "Family Bonded", description: "Complete 25 family quests", icon: "❤️", rarity: "epic", category: "family", target: 25 },
-  { key: "scholar", name: "Scholar", description: "Complete 50 learning quests", icon: "📚", rarity: "epic", category: "learning", target: 50 },
-  { key: "side-success", name: "Side Hustle Success", description: "Complete 25 side hustle quests", icon: "🚀", rarity: "epic", category: "hustle", target: 25 },
+  { key: "scholar", name: "Scholar", description: "Complete 50 mindset quests", icon: "📚", rarity: "epic", category: "mindset", target: 50 },
+  { key: "side-success", name: "Side Hustle Success", description: "Complete 25 wealth or career quests", icon: "🚀", rarity: "epic", category: "wealth", target: 25 },
   { key: "level-5", name: "Rising Hero", description: "Reach level 5", icon: "🆙", rarity: "common", category: null, target: 5 },
   { key: "level-10", name: "Seasoned Adventurer", description: "Reach level 10", icon: "⚔️", rarity: "rare", category: null, target: 10 },
   { key: "level-25", name: "Champion", description: "Reach level 25", icon: "👑", rarity: "epic", category: null, target: 25 },
@@ -228,7 +230,7 @@ const CATEGORY_STAT_IMPACT: Record<string, string[]> = {
   hustle: ["wealth", "intelligence"],
 };
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => dayKeyUtc();
 const nowISO = () => new Date().toISOString();
 
 // ============================================================================
@@ -453,8 +455,8 @@ export async function completeQuestLocal(uid: string, questId: string) {
   }
   const longestStreak = Math.max(char.longestStreak ?? 0, currentStreak);
 
-  // Streak XP multiplier: +5% per streak day, capped at +50%
-  const streakMult = 1 + Math.min(0.5, currentStreak * 0.05);
+  // Streak XP multiplier: +5% per streak day, capped at +50% (shared helper)
+  const streakMult = streakXpMultiplier(currentStreak);
   const baseXp = Number(quest.xpReward) || 0;
   const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
   const streakBonusXp = awardedXp - baseXp;
@@ -541,6 +543,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
     } else if (a.key === "first-workout" || a.key === "10-workouts" || a.key === "100-workouts") {
       progress = allComps.filter(c => c.category === "health").length;
     } else if (a.key === "save-100" || a.key === "save-1000" || a.key === "debt-crusher") {
+      // wealth + legacy finance
       progress = allComps.filter(c => c.category === "finance" || c.category === "wealth").length;
     } else if (a.key === "first-cert") {
       progress = allComps.filter(c => c.category === "career" && c.difficulty === "hard").length;
@@ -549,9 +552,13 @@ export async function completeQuestLocal(uid: string, questId: string) {
     } else if (a.key === "family-bonded") {
       progress = allComps.filter(c => c.category === "family").length;
     } else if (a.key === "scholar") {
-      progress = allComps.filter(c => c.category === "learning").length;
+      // mindset + legacy learning
+      progress = allComps.filter(c => c.category === "mindset" || c.category === "learning").length;
     } else if (a.key === "side-success") {
-      progress = allComps.filter(c => c.category === "hustle").length;
+      // wealth/career proxy + legacy hustle
+      progress = allComps.filter(c =>
+        c.category === "hustle" || c.category === "wealth" || c.category === "career"
+      ).length;
     }
     const shouldUnlock = !a.unlocked && progress >= (a.target ?? 1);
     if (progress !== a.progress || shouldUnlock) {
@@ -566,6 +573,9 @@ export async function completeQuestLocal(uid: string, questId: string) {
     }
   }
   await aBatch.commit();
+
+  // Retention: refresh weekly challenge progress (no auto-claim).
+  await syncWeeklyChallengeProgress(uid);
 
   const updatedCharSnap = await getDoc(charRef);
   const updatedChar: any = { id: uid, userId: uid, ...updatedCharSnap.data() };
