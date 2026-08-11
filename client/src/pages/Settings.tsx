@@ -14,6 +14,7 @@ import { compressAvatar } from "@/lib/imageUpload";
 import { readSocialUserPrefs, writeSocialUserPrefs } from "@/lib/social/api";
 import type { SocialUserPrefs } from "@/lib/social/api";
 import { LAUNCH_FLAGS, isSocialSurfaceEnabled } from "@/lib/featureFlags";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 const AVATAR_CLASSES = [
   { key: "warrior", name: "Warrior", emoji: "⚔️" },
@@ -53,6 +54,12 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [panel, setPanel] = useState<Panel>(null);
   const [busy, setBusy] = useState(false);
+
+  useRegisterBackHandler(() => {
+    if (!panel) return false;
+    setPanel(null);
+    return true;
+  }, panel != null);
 
   // Field-local drafts
   const [name, setName] = useState("");

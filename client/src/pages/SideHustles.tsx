@@ -27,6 +27,7 @@ import {
   type HustleGuideProgress,
 } from "@/lib/personalization/guideProgress";
 import { writeFeedback } from "@/lib/personalization/feedback";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 const COST_LABEL: Record<SideHustle["startupCost"], string> = {
   Free: "Free to start",
@@ -41,6 +42,12 @@ export default function SideHustlesPage() {
   const [filter, setFilter] = useState<SideHustle["category"] | "All">("All");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [progress, setProgress] = useState<HustleGuideProgress>(() => mergeHustleProgress(null));
+
+  useRegisterBackHandler(() => {
+    if (!detailId) return false;
+    setDetailId(null);
+    return true;
+  }, detailId != null);
 
   useEffect(() => {
     let cancelled = false;

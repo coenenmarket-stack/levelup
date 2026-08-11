@@ -25,6 +25,7 @@ import { CAREER_PATHS } from "@/lib/careerPaths";
 import { CERTIFICATIONS } from "@/lib/certifications";
 import { SIDE_HUSTLES } from "@/lib/sideHustles";
 import { ChevronLeft, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -79,6 +80,12 @@ export default function PersonalizePage() {
   const [currentRole, setCurrentRole] = useState("");
   const [targetRole, setTargetRole] = useState("");
   const [existingPathId, setExistingPathId] = useState<string | null>(null);
+
+  useRegisterBackHandler(() => {
+    if (step <= 0) return false;
+    setStep((s) => (s - 1) as Step);
+    return true;
+  }, step > 0);
 
   useEffect(() => {
     if (!me?.id) return;

@@ -23,6 +23,8 @@ import {
 import { Logo } from "./Logo";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { EdgeSwipeBack } from "./EdgeSwipeBack";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 const bottomNav = [
   { href: "/", label: "Home", icon: Home, testId: "nav-home" },
@@ -130,6 +132,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [menuOpen]);
 
+  // Swipe-back / system-back closes the menu before leaving the page.
+  useRegisterBackHandler(() => {
+    if (!menuOpen) return false;
+    setMenuOpen(false);
+    return true;
+  }, menuOpen);
+
   const visibleBottom = useMemo(
     () =>
       bottomNav.filter((item) => {
@@ -151,6 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
+    <EdgeSwipeBack>
     <div className="min-h-screen mx-auto w-full max-w-md md:max-w-2xl">
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/70 border-b border-card-border">
         <div className="flex items-center justify-between px-5 py-3.5 pt-safe">
@@ -271,5 +281,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </>
       )}
     </div>
+    </EdgeSwipeBack>
   );
 }
