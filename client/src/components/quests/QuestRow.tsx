@@ -34,6 +34,8 @@ export function QuestRow({
   const isCompleted = variant === "completed";
   const busy = isCompleting;
 
+  // Active = empty ring (tappable). Completed = filled check.
+  // Never show a check on active rows — it reads as "already done".
   const completeControl =
     variant === "active" ? (
       interactive ? (
@@ -50,10 +52,14 @@ export function QuestRow({
           }}
           disabled={busy}
           data-testid={`button-complete-${quest.id}`}
-          className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all hover-elevate active-elevate-2 border-primary/50 bg-primary/10 text-primary disabled:opacity-60"
+          className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all hover-elevate active-elevate-2 border-primary/50 bg-transparent text-primary disabled:opacity-60"
           aria-label={`Complete quest: ${quest.title}`}
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 opacity-40" />}
+          {busy ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/70" aria-hidden />
+          )}
         </button>
       )
     ) : (
