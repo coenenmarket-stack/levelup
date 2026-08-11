@@ -505,32 +505,40 @@ export async function completeQuestLocal(uid: string, questId: string) {
   updates.legacyScore = totalLevel; // now 5..495 (sum of all 5 skill levels)
   await updateDoc(charRef, updates);
 
-  // Update achievements (expanded catalog; cosmetic unlocks — no XP)
-  const [compsSnap, catsSnap2] = await Promise.all([
-    getDocs(collection(charRef, "completions")),
-    getDocs(collection(charRef, "categories")),
-  ]);
-  const allComps = compsSnap.docs.map(d => d.data() as any);
-  const categoryLevels: Record<string, number> = {};
-  catsSnap2.forEach((d) => {
-    const c: any = d.data();
-    if (c.key) categoryLevels[c.key] = c.level ?? 1;
-  });
-  if (questCategoryLevel != null) categoryLevels[quest.category] = questCategoryLevel;
-  const newChar = { ...char, ...updates };
-  const newlyUnlocked = await evaluateAchievements(uid, {
-    allComps,
-    character: newChar,
-    categoryLevels,
-  });
-
-  // Retention: refresh weekly challenge progress (no auto-claim).
-  await syncWeeklyChallengeProgress(uid);
-
   const updatedCharSnap = await getDoc(charRef);
   const updatedChar: any = { id: uid, userId: uid, ...updatedCharSnap.data() };
   updatedChar.xpToNext = XP_TO_NEXT_LEVEL(updatedChar.level);
   try { updatedChar.goals = JSON.parse(updatedChar.goalsJson || "[]"); } catch { updatedChar.goals = []; }
+
+  // Defer achievement + weekly sync so the UI unlocks immediately for the next quest.
+  // Failures here must never block further completions in the same session.
+  void (async () => {
+    try {
+      const [compsSnap, catsSnap2] = await Promise.all([
+        getDocs(collection(charRef, "completions")),
+        getDocs(collection(charRef, "categories")),
+      ]);
+      const allComps = compsSnap.docs.map(d => d.data() as any);
+      const categoryLevels: Record<string, number> = {};
+      catsSnap2.forEach((d) => {
+        const c: any = d.data();
+        if (c.key) categoryLevels[c.key] = c.level ?? 1;
+      });
+      if (questCategoryLevel != null) categoryLevels[quest.category] = questCategoryLevel;
+      await evaluateAchievements(uid, {
+        allComps,
+        character: { ...char, ...updates },
+        categoryLevels,
+      });
+    } catch (e) {
+      console.warn("deferred achievement eval failed", e);
+    }
+    try {
+      await syncWeeklyChallengeProgress(uid);
+    } catch (e) {
+      console.warn("deferred weekly sync failed", e);
+    }
+  })();
 
   return {
     character: updatedChar,
@@ -539,7 +547,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
     newLevel: level,
     xpEarned: awardedXp,
     streakBonusXp,
-    newlyUnlocked,
+    newlyUnlocked: [] as any[],
     xpToNext: XP_TO_NEXT_LEVEL(level),
   };
 }

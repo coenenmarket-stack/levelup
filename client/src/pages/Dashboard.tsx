@@ -49,7 +49,7 @@ const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.m
 type DailyPack = { quests: Quest[]; cached?: boolean; allComplete?: boolean };
 
 export default function Dashboard() {
-  const { character, completeQuest, isCompleting, completingQuestId } = useGame();
+  const { character, completeQuest, completingQuestId } = useGame();
   const { me } = useAuth();
   const qc = useQueryClient();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
@@ -205,7 +205,9 @@ export default function Dashboard() {
       <TodaysMissionCard
         mission={mission}
         onStart={mission.quest ? () => completeQuest(mission.quest!) : undefined}
-        isCompleting={isCompleting}
+        isCompleting={
+          !!mission.quest && completingQuestId === String(mission.quest.id)
+        }
       />
 
       {/* 3. Today's Focus */}
