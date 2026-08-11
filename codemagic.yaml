@@ -143,10 +143,12 @@ workflows:
             --create \
             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
+          # App Store export (NOT TestFlight Internal Only) so the IPA can be
+          # selected for App Store Review. Internal-only builds are TF-usable
+          # but cannot be submitted for release.
           xcode-project use-profiles \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --archive-method app-store \
-            --custom-export-options='{"testFlightInternalTestingOnly": true}'
+            --archive-method app-store
 
       - name: Build IPA
         script: |
@@ -193,11 +195,11 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        # Upload to TestFlight only. Internal ASC users install without beta review.
-        # Do NOT set submit_to_testflight or beta_groups here — post-processing
-        # submits to external beta review and assigns external groups; our
-        # "Internal Testers" group is App Store Connect Users (internal testing),
-        # which Codemagic cannot auto-assign and often fails post-process.
+        # Upload IPA to App Store Connect / TestFlight processing.
+        # Builds are App Store distribution (submittable for review).
+        # Do NOT set submit_to_testflight or beta_groups here — that post-process
+        # can force external beta review. Internal ASC users can still install
+        # via TestFlight without that flag.
 
   # -------------------------------------------------------------------------
   # OLD — do not use for icon / Google auth TestFlight until main is merged.
@@ -291,10 +293,12 @@ workflows:
             --create \
             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
+          # App Store export (NOT TestFlight Internal Only) so the IPA can be
+          # selected for App Store Review. Internal-only builds are TF-usable
+          # but cannot be submitted for release.
           xcode-project use-profiles \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
-            --archive-method app-store \
-            --custom-export-options='{"testFlightInternalTestingOnly": true}'
+            --archive-method app-store
 
       - name: Build IPA
         script: |
