@@ -99,8 +99,8 @@ Do **not** use `ios-testflight-main` for launch icon/Google auth.
    - Optional: `GOOGLE_SERVICE_INFO_PLIST_BASE64` → decoded to `ios/App/App/GoogleService-Info.plist`
    - Optional: `REQUIRE_GOOGLE_SERVICE_PLIST=true` when native FCM/APNs must be present
    - Optional later: Firebase token / Resend only if CI deploy is adopted (not recommended yet)
-8. Pipeline already runs: `npm ci` → `npm run check` → `npm run build` → `npx cap sync ios` → optional plist inject → icons → `agvtool` version **1.0.1** + `BUILD_NUMBER` → signed IPA → ASC upload.
-9. Publishing: upload only; internal TestFlight (see YAML comments — no external beta auto-submit).
+8. Pipeline already runs: `npm ci` → `npm run check` → `npm run build` → `npx cap sync ios` → optional plist inject → icons → `agvtool` version **1.0.1** + `BUILD_NUMBER` → signed **App Store** IPA (submittable for review; not TestFlight-Internal-Only) → ASC upload.
+9. Publishing: upload only; TestFlight install still works for internal ASC users. New builds should appear selectable under App Store version → Add Build (no “Internal” restriction).
 10. Verify build in App Store Connect → install on physical iPhone → run `docs/RELEASE-QA-CHECKLIST.md`.
 
 ### E. After infra is verified — flip feature flags
