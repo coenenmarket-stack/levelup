@@ -17,6 +17,7 @@ export function WeeklyChallengesCard() {
       return res.json() as Promise<{ xpEarned: number }>;
     },
     onSuccess: (result) => {
+      void import("@/lib/haptics").then(({ hapticSuccess }) => void hapticSuccess());
       toast({
         title: "Weekly reward claimed",
         description: `+${result.xpEarned} XP`,

@@ -15,7 +15,6 @@ import { Loader2 } from "lucide-react";
 
 import Dashboard from "./pages/Dashboard";
 import Quests from "./pages/Quests";
-import Character from "./pages/Character";
 import Achievements from "./pages/Achievements";
 import Stats from "./pages/Stats";
 import Shop from "./pages/Shop";
@@ -45,6 +44,14 @@ function FullScreenSpinner() {
       <Loader2 className="w-7 h-7 text-primary animate-spin" />
     </div>
   );
+}
+
+function CharacterRedirect() {
+  const [, setLoc] = useLocation();
+  useEffect(() => {
+    setLoc("/profile");
+  }, [setLoc]);
+  return <FullScreenSpinner />;
 }
 
 function GatedApp() {
@@ -143,7 +150,7 @@ function GatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/quests" component={Quests} />
-          <Route path="/character" component={Character} />
+          <Route path="/character" component={CharacterRedirect} />
           <Route path="/profile" component={Profile} />
           <Route path="/settings" component={Settings} />
           <Route path="/achievements" component={Achievements} />

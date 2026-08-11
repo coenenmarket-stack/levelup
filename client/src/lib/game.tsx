@@ -93,6 +93,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setFloats((s) => [...s, { id, amount: result.xpEarned }]);
       setTimeout(() => setFloats((s) => s.filter((x) => x.id !== id)), 1600);
 
+      void import("./haptics").then(({ hapticLight, hapticSuccess }) => {
+        if (result.leveledUp) void hapticSuccess();
+        else void hapticLight();
+      });
+
       if (result.streakBonusXp && result.streakBonusXp > 0) {
         toast({
           title: "Streak bonus",

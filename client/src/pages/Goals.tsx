@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useAuth } from "@/lib/auth";
 import {
   computeGoalProgress,
@@ -92,6 +93,28 @@ export default function GoalsPage() {
         </p>
       </div>
 
+      {goals.length === 0 && (
+        <div className="surface rounded-xl p-4 space-y-3" data-testid="goals-empty">
+          <div className="text-sm text-muted-foreground">
+            No goals yet. Start from a career path or explore ideas, then add a target below.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/career-paths"
+              className="rounded-xl bg-primary/10 text-primary border border-primary/30 px-3 py-2 text-sm font-semibold hover-elevate"
+            >
+              Browse career paths
+            </Link>
+            <Link
+              href="/explore"
+              className="rounded-xl border border-card-border px-3 py-2 text-sm font-semibold hover-elevate"
+            >
+              Explore ideas
+            </Link>
+          </div>
+        </div>
+      )}
+
       <section className="surface rounded-2xl p-4 space-y-3">
         <div className="text-sm font-semibold">Add a goal</div>
         <input
@@ -123,13 +146,9 @@ export default function GoalsPage() {
         </button>
       </section>
 
-      <section className="space-y-2">
-        {goals.length === 0 ? (
-          <div className="text-sm text-muted-foreground surface rounded-xl p-4">
-            No goals yet. Add one from a skill, path, cert, hustle, or custom target.
-          </div>
-        ) : (
-          goals.map((g) => {
+      {goals.length > 0 && (
+        <section className="space-y-2">
+          {goals.map((g) => {
             const pathCtx =
               g.type === "career_path" && g.relatedEntityId
                 ? pathProgress[g.relatedEntityId]
@@ -173,9 +192,9 @@ export default function GoalsPage() {
                 </div>
               </div>
             );
-          })
-        )}
-      </section>
+          })}
+        </section>
+      )}
     </div>
   );
 }

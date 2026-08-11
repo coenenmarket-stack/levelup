@@ -1,7 +1,8 @@
 import { Link } from "wouter";
-import { Sparkles, Swords, User, Trophy, GraduationCap, Briefcase, Compass, Map, Target } from "lucide-react";
+import { Sparkles, Swords, User, GraduationCap, Compass, Map, Target } from "lucide-react";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
+/** Trimmed journey grid — core destinations only (rest live in the menu). */
 const LINKS = [
   { href: "/explore", label: "Explore", icon: Compass, testId: "journey-explore" },
   { href: "/career-paths", label: "Paths", icon: Map, testId: "journey-paths" },
@@ -14,10 +15,7 @@ const LINKS = [
     testId: "journey-coach",
     flag: "aiCoachEnabled" as const,
   },
-  { href: "/side-hustles", label: "Hustles", icon: Briefcase, testId: "journey-hustles" },
   { href: "/profile", label: "Hero", icon: User, testId: "journey-hero" },
-  { href: "/achievements", label: "Badges", icon: Trophy, testId: "journey-achievements" },
-  { href: "/certifications", label: "Certs", icon: GraduationCap, testId: "journey-certs" },
 ] as const;
 
 export function ContinueJourney() {
@@ -25,7 +23,10 @@ export function ContinueJourney() {
 
   return (
     <section className="space-y-2.5" data-testid="section-continue-journey">
-      <h2 className="text-sm font-bold tracking-tight px-0.5">Continue Journey</h2>
+      <div className="flex items-baseline justify-between px-0.5">
+        <h2 className="text-sm font-bold tracking-tight">Continue Journey</h2>
+        <span className="text-[10px] text-muted-foreground">More in menu</span>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         {links.map(({ href, label, icon: Icon, testId }) => (
           <Link
@@ -39,6 +40,14 @@ export function ContinueJourney() {
           </Link>
         ))}
       </div>
+      <Link
+        href="/certifications"
+        data-testid="journey-certs-link"
+        className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1"
+      >
+        <GraduationCap className="w-3.5 h-3.5" />
+        Certifications & side hustles in the menu
+      </Link>
     </section>
   );
 }

@@ -17,7 +17,7 @@ const FAQS = [
   },
   {
     q: "How do I change my goals or class?",
-    a: "Open Settings from the menu (»»). Profile edits and preferences live there. Character stats update as you complete quests in each skill.",
+    a: "Open Settings from the menu (☰ icon in the top-right). Profile edits and preferences live there. Character stats update as you complete quests in each skill.",
   },
 ];
 

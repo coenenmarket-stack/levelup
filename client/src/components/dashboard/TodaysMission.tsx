@@ -30,7 +30,7 @@ export function TodaysMissionCard({ mission, onStart, isCompleting }: Props) {
           data-testid="button-start-mission"
           className="mt-3 w-full rounded-xl py-2.5 bg-primary text-primary-foreground text-sm font-semibold hover-elevate active-elevate-2 disabled:opacity-60"
         >
-          {isCompleting ? "Completing…" : "Start mission"}
+          {isCompleting ? "Completing…" : "Mark complete"}
         </button>
       )}
     </section>

@@ -199,6 +199,10 @@
 
   /* Bottom-nav safe area (iOS PWA) */
   .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 5rem); }
+  .pb-safe.coach-fullbleed,
+  [data-hide-bottom-nav="true"].pb-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  }
   .pt-safe { padding-top: calc(env(safe-area-inset-top) + 0.75rem); }
   .pb-nav-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 4.5rem); }
 

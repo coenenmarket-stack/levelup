@@ -40,6 +40,7 @@ import type { Category } from "@/lib/types";
 import { FeatureUnavailable } from "@/components/FeatureUnavailable";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map((a) => [a.key, a.emoji]));
 const SKILL_ORDER = ["health", "wealth", "career", "family", "mindset"] as const;
@@ -59,6 +60,7 @@ export default function FriendsPage() {
   const { me, connectFacebookForFriends } = useAuth();
   const { character } = useGame();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const qc = useQueryClient();
   const [loc] = useLocation();
   const [codeInput, setCodeInput] = useState("");
@@ -263,24 +265,33 @@ export default function FriendsPage() {
 
   if (selected) {
     return (
-      <FriendCompare
-        me={character}
-        myCats={myCats ?? []}
-        friend={selected}
-        onBack={() => setSelectedFriend(null)}
-        onRemove={() => removeMut.mutate(selected.uid)}
-        onBlock={() => {
-          if (window.confirm(`Block ${selected.name}? They won't be able to invite you.`)) {
+      <>
+        {confirmDialog}
+        <FriendCompare
+          me={character}
+          myCats={myCats ?? []}
+          friend={selected}
+          onBack={() => setSelectedFriend(null)}
+          onRemove={() => removeMut.mutate(selected.uid)}
+          onBlock={async () => {
+            const ok = await confirm({
+              title: `Block ${selected.name}?`,
+              description: "They won't be able to invite you or send friend requests.",
+              confirmLabel: "Block",
+              danger: true,
+            });
+            if (!ok) return;
             blockMut.mutate(selected.uid);
-          }
-        }}
-        removing={removeMut.isPending || blockMut.isPending}
-      />
+          }}
+          removing={removeMut.isPending || blockMut.isPending}
+        />
+      </>
     );
   }
 
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <div>
         <div className="flex items-center gap-2">
           <Users className="w-6 h-6 text-primary" strokeWidth={2.4} />

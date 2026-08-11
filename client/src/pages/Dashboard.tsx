@@ -25,9 +25,12 @@ import { StreakStatusStrip } from "@/components/dashboard/StreakStatusStrip";
 import { QUEST_CATALOG } from "@/lib/questCatalog";
 import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePrompt";
 import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
+import { WeeklyClaimChip } from "@/components/dashboard/WeeklyClaimChip";
+import { LocalReminderNudge } from "@/components/dashboard/LocalReminderNudge";
 import { SocialHomeCard } from "@/components/SocialHomeCard";
 import { PushOptInCard } from "@/components/PushOptInCard";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import { readPersonalization } from "@/lib/personalization/store";
 import {
   DEFAULT_PERSONALIZATION,
@@ -52,6 +55,7 @@ export default function Dashboard() {
   const { character, completeQuest, completingQuestId } = useGame();
   const { me } = useAuth();
   const qc = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
   const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
   const [hasOpenGoals, setHasOpenGoals] = useState(false);
@@ -122,6 +126,19 @@ export default function Dashboard() {
   const activeHustle = activeHustleId ? getSideHustleById(activeHustleId) : null;
   const weeklyClaimable = (weekly?.challenges ?? []).filter((c) => c.completed && !c.rewardClaimed).length;
   const showSoftPrompt = shouldShowSoftPersonalizePrompt(prefs);
+  const dailyCleared = !!(pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0));
+
+  async function requestComplete(q: Quest) {
+    if (q.difficulty === "hard") {
+      const ok = await confirm({
+        title: "Complete hard quest?",
+        description: `"${q.title}" awards +${q.xpReward} XP. You can only complete it once today.`,
+        confirmLabel: "Mark complete",
+      });
+      if (!ok) return;
+    }
+    completeQuest(q);
+  }
 
   const nextAction = pickRecommendedNextAction({
     prefs,
@@ -141,6 +158,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       {me?.id && <WelcomeDialog userId={String(me.id)} />}
 
       {me?.id && (
@@ -154,7 +172,7 @@ export default function Dashboard() {
       {/* 1. Hero / Level card */}
       <motion.section
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="surface rounded-2xl p-5 emerald-glow"
+        className={`surface rounded-2xl p-5 emerald-glow ${streak.atRisk ? "border border-accent/40" : ""}`}
         data-testid="card-hero"
       >
         <div className="flex items-center gap-4">
@@ -189,7 +207,13 @@ export default function Dashboard() {
         </div>
         <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span>Total: <span className="text-foreground font-num">{character.totalXp.toLocaleString()}</span> XP</span>
-          <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
+          {LAUNCH_FLAGS.rewardsShopEnabled ? (
+            <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground/80" title="Rewards shop coming later">
+              Rewards shop soon
+            </span>
+          )}
         </div>
         <StreakStatusStrip
           currentStreak={character.currentStreak}
@@ -198,20 +222,31 @@ export default function Dashboard() {
         />
       </motion.section>
 
-      {/* Avoid competing personalize CTAs when soft prompt is visible */}
-      {!showSoftPrompt && <RecommendedNextActionCard action={nextAction} />}
+      <WeeklyClaimChip count={weeklyClaimable} />
 
-      {/* 2. Today's Mission */}
+      {/* Avoid competing personalize CTAs when soft prompt is visible; hide next-action when mission is the clear focus */}
+      {!showSoftPrompt && !(mission.quest && nextAction?.kind === "finish_daily_quests") && (
+        <RecommendedNextActionCard action={nextAction} />
+      )}
+
+      {/* 2. Today's Mission (focus copy folded into subtitle when present) */}
       <TodaysMissionCard
-        mission={mission}
-        onStart={mission.quest ? () => completeQuest(mission.quest!) : undefined}
+        mission={{
+          ...mission,
+          subtitle: mission.quest
+            ? mission.subtitle
+            : focus.body
+              ? `${mission.subtitle} · ${focus.title}`
+              : mission.subtitle,
+        }}
+        onStart={mission.quest ? () => void requestComplete(mission.quest!) : undefined}
         isCompleting={
           !!mission.quest && completingQuestId === String(mission.quest.id)
         }
       />
 
-      {/* 3. Today's Focus */}
-      <TodaysFocusCard title={focus.title} body={focus.body} />
+      {/* Focus only when there's no active mission card quest (avoid duplicate guidance) */}
+      {!mission.quest && <TodaysFocusCard title={focus.title} body={focus.body} />}
 
       {activePath && (
         <Link
@@ -313,9 +348,8 @@ export default function Dashboard() {
                   key={q.id}
                   quest={q}
                   variant="active"
-                  onComplete={() => completeQuest(q)}
+                  onComplete={() => void requestComplete(q)}
                   isCompleting={completingQuestId === String(q.id)}
-                  interactive
                 />
               ))}
             </QuestSection>
@@ -350,6 +384,8 @@ export default function Dashboard() {
       ) : null}
 
       {LAUNCH_FLAGS.remotePushEnabled ? <PushOptInCard /> : null}
+
+      <LocalReminderNudge dailyCleared={dailyCleared} />
 
       {/* More to do */}
       <MoreToDoStrip />

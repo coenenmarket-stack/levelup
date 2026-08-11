@@ -12,7 +12,7 @@ import {
   HelpCircle,
   Settings as SettingsIcon,
   Users,
-  ChevronUp,
+  Menu,
   X,
   Compass,
   Map,
@@ -159,6 +159,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     [],
   );
 
+  const hideBottomNav = loc === "/coach" && LAUNCH_FLAGS.aiCoachEnabled;
+
   return (
     <EdgeSwipeBack>
     <div className="min-h-screen mx-auto w-full max-w-md md:max-w-2xl">
@@ -178,46 +180,55 @@ export function AppShell({ children }: { children: ReactNode }) {
             data-testid="button-open-menu"
             className="w-9 h-9 rounded-lg flex items-center justify-center hover-elevate text-primary"
           >
-            <div className="flex flex-col items-center justify-center leading-none">
-              <ChevronUp className="w-3.5 h-3.5 -mb-[5px]" strokeWidth={3} />
-              <ChevronUp className="w-3.5 h-3.5 -mb-[5px]" strokeWidth={3} />
-              <ChevronUp className="w-3.5 h-3.5" strokeWidth={3} />
-            </div>
+            <Menu className="w-5 h-5" strokeWidth={2.4} />
           </button>
         </div>
       </header>
 
-      <main className="px-5 pb-safe pt-4 space-y-5" data-testid="page-main">
+      <main
+        className={`px-5 pb-safe pt-4 space-y-5 ${hideBottomNav ? "coach-fullbleed" : ""}`}
+        data-testid="page-main"
+        data-hide-bottom-nav={hideBottomNav ? "true" : undefined}
+      >
         {children}
       </main>
 
-      <nav className="fixed bottom-0 inset-x-0 z-50 border-t border-card-border bg-background/95 backdrop-blur-xl">
-        <div
-          className="mx-auto max-w-md md:max-w-2xl px-2 py-2 grid gap-1"
-          style={{
-            paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)",
-            gridTemplateColumns: `repeat(${visibleBottom.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {visibleBottom.map((item) => {
-            const Icon = item.icon;
-            const active = loc === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                data-testid={item.testId}
-                className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl hover-elevate ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                <Icon className={`w-6 h-6 ${active ? "text-primary" : ""}`} strokeWidth={active ? 2.4 : 2} />
-                <span className={`text-[11px] font-medium ${active ? "text-primary" : ""}`}>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      {!hideBottomNav && (
+        <nav className="fixed bottom-0 inset-x-0 z-50 border-t border-card-border bg-background/95 backdrop-blur-xl">
+          <div
+            className="mx-auto max-w-md md:max-w-2xl px-2 py-2 grid gap-1"
+            style={{
+              paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)",
+              gridTemplateColumns: `repeat(${visibleBottom.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {visibleBottom.map((item) => {
+              const Icon = item.icon;
+              const active = loc === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  data-testid={item.testId}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative flex flex-col items-center justify-center gap-1 py-2 rounded-xl hover-elevate ${
+                    active ? "text-primary bg-primary/10" : "text-muted-foreground"
+                  }`}
+                >
+                  <Icon className={`w-6 h-6 ${active ? "text-primary" : ""}`} strokeWidth={active ? 2.4 : 2} />
+                  <span className={`text-[11px] font-medium ${active ? "text-primary" : ""}`}>{item.label}</span>
+                  {active && (
+                    <span
+                      className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary"
+                      aria-hidden
+                    />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
 
       {menuOpen && (
         <>

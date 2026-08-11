@@ -15,6 +15,7 @@ import { readSocialUserPrefs, writeSocialUserPrefs } from "@/lib/social/api";
 import type { SocialUserPrefs } from "@/lib/social/api";
 import { LAUNCH_FLAGS, isSocialSurfaceEnabled } from "@/lib/featureFlags";
 import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const AVATAR_CLASSES = [
   { key: "warrior", name: "Warrior", emoji: "⚔️" },
@@ -52,6 +53,7 @@ export default function SettingsPage() {
   const { character } = useGame();
   const { theme, toggle: toggleTheme } = useTheme();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [panel, setPanel] = useState<Panel>(null);
   const [busy, setBusy] = useState(false);
 
@@ -131,6 +133,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <div className="space-y-0.5">
         <h1 className="text-2xl font-extrabold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your account and your character.</p>
@@ -188,9 +191,12 @@ export default function SettingsPage() {
           value={me.notificationsEnabled}
           onChange={async (v) => {
             if (v) {
-              const ok = window.confirm(
-                "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
-              );
+              const ok = await confirm({
+                title: "Enable reminders?",
+                description:
+                  "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
+                confirmLabel: "Continue",
+              });
               if (!ok) return;
               const { requestNotificationPermission, syncNotificationsForUser } = await import("@/lib/notifications");
               const { doc, setDoc } = await import("firebase/firestore");
@@ -211,9 +217,12 @@ export default function SettingsPage() {
                   { merge: true },
                 );
                 await refresh();
-                window.alert(
-                  "Notifications are blocked for this app. Open iOS Settings → Level Up Life → Notifications to enable them later.",
-                );
+                toast({
+                  title: "Notifications blocked",
+                  description:
+                    "Open iOS Settings → Level Up Life → Notifications to enable them later.",
+                  variant: "destructive",
+                });
                 return;
               }
 
@@ -231,9 +240,12 @@ export default function SettingsPage() {
                     { merge: true },
                   );
                   await refresh();
-                  window.alert(
-                    "Push permission was denied. You can enable it later in iOS Settings → Level Up Life → Notifications.",
-                  );
+                  toast({
+                    title: "Push permission denied",
+                    description:
+                      "You can enable it later in iOS Settings → Level Up Life → Notifications.",
+                    variant: "destructive",
+                  });
                   return;
                 }
                 remoteOk = push.ok || push.reason === "unsupported";

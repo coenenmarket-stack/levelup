@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DailyProgressBar } from "@/components/quests/DailyProgressBar";
 import { QuestRow } from "@/components/quests/QuestRow";
 import { QuestSection } from "@/components/quests/QuestSection";
@@ -20,6 +21,7 @@ import {
   type QuestCatalogItem,
   type QuestCatalogCategory,
 } from "@/lib/questCatalog";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const PAGE_SIZE = 20;
 
@@ -32,10 +34,11 @@ const diffMeta: Record<string, { label: string; xp: number; className: string }>
 export default function Quests() {
   const { completeQuest, completingQuestId } = useGame();
   const qc = useQueryClient();
-  const { data: quests } = useQuery<Quest[]>({ queryKey: ["/api/quests"] });
+  const { data: quests, isLoading } = useQuery<Quest[]>({ queryKey: ["/api/quests"] });
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
   const [mode, setMode] = useState<"mine" | "catalog">("mine");
   const [filter, setFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const delMut = useMutation({
     mutationFn: async (id: string | number) => {
@@ -48,8 +51,32 @@ export default function Quests() {
   const { active, completedToday } = splitQuestsByCompletion(filtered);
   const progress = computeDailyProgress(active, completedToday);
 
+  async function requestComplete(q: Quest) {
+    if (q.difficulty === "hard") {
+      const ok = await confirm({
+        title: "Complete hard quest?",
+        description: `"${q.title}" awards +${q.xpReward} XP. You can only complete it once today.`,
+        confirmLabel: "Mark complete",
+      });
+      if (!ok) return;
+    }
+    completeQuest(q);
+  }
+
+  async function requestDelete(q: Quest) {
+    const ok = await confirm({
+      title: "Delete this quest?",
+      description: `"${q.title}" will be removed from your list. Progress for today is unaffected.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    delMut.mutate(q.id);
+  }
+
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">
           Quests
@@ -73,63 +100,82 @@ export default function Quests() {
 
       {mode === "mine" ? (
         <>
-          {progress.total > 0 && <DailyProgressBar progress={progress} data-testid="quests-daily-progress" />}
+          {isLoading && !quests ? (
+            <div className="space-y-2.5" data-testid="quests-loading">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-20 w-full rounded-xl" />
+              <Skeleton className="h-20 w-full rounded-xl" />
+            </div>
+          ) : (
+            <>
+              {progress.total > 0 && <DailyProgressBar progress={progress} data-testid="quests-daily-progress" />}
 
-          <div className="flex items-center gap-2">
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="flex-1">
-              <TabsList className="w-full grid grid-cols-4">
-                <TabsTrigger value="all" data-testid="tab-all">
-                  All
-                </TabsTrigger>
-                <TabsTrigger value="easy" data-testid="tab-easy">
-                  Easy
-                </TabsTrigger>
-                <TabsTrigger value="medium" data-testid="tab-medium">
-                  Medium
-                </TabsTrigger>
-                <TabsTrigger value="hard" data-testid="tab-hard">
-                  Hard
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <NewQuestButton cats={cats ?? []} />
-          </div>
+              <div className="flex items-center gap-2">
+                <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="flex-1">
+                  <TabsList className="w-full grid grid-cols-4">
+                    <TabsTrigger value="all" data-testid="tab-all">
+                      All
+                    </TabsTrigger>
+                    <TabsTrigger value="easy" data-testid="tab-easy">
+                      Easy
+                    </TabsTrigger>
+                    <TabsTrigger value="medium" data-testid="tab-medium">
+                      Medium
+                    </TabsTrigger>
+                    <TabsTrigger value="hard" data-testid="tab-hard">
+                      Hard
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <NewQuestButton cats={cats ?? []} />
+              </div>
 
-          <QuestSection
-            title="Active Quests"
-            count={active.length}
-            emptyMessage={
-              completedToday.length > 0
-                ? "All caught up for now — nice work."
-                : "No quests yet. Create one or add from the Catalog."
-            }
-            data-testid="section-active-quests"
-          >
-            {active.map((q) => (
-              <QuestRow
-                key={q.id}
-                quest={q}
-                variant="active"
-                onComplete={() => completeQuest(q)}
-                onDelete={() => {
-                  if (confirm("Delete this quest?")) delMut.mutate(q.id);
-                }}
-                isCompleting={completingQuestId === String(q.id)}
-                showDelete
-              />
-            ))}
-          </QuestSection>
+              <QuestSection
+                title="Active Quests"
+                count={active.length}
+                emptyMessage={
+                  completedToday.length > 0
+                    ? "All caught up for now — nice work."
+                    : "No quests yet. Create one or add from the Catalog."
+                }
+                emptyAction={
+                  <button
+                    type="button"
+                    onClick={() => setMode("catalog")}
+                    data-testid="button-empty-browse-catalog"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover-elevate"
+                  >
+                    <Library className="w-4 h-4" />
+                    Browse Catalog
+                  </button>
+                }
+                data-testid="section-active-quests"
+              >
+                {active.map((q) => (
+                  <QuestRow
+                    key={q.id}
+                    quest={q}
+                    variant="active"
+                    onComplete={() => void requestComplete(q)}
+                    onDelete={() => void requestDelete(q)}
+                    isCompleting={completingQuestId === String(q.id)}
+                    showDelete
+                  />
+                ))}
+              </QuestSection>
 
-          <QuestSection
-            title="Completed Today"
-            count={completedToday.length}
-            collapsible
-            data-testid="section-completed-today"
-          >
-            {completedToday.map((q) => (
-              <QuestRow key={q.id} quest={q} variant="completed" expanded />
-            ))}
-          </QuestSection>
+              <QuestSection
+                title="Completed Today"
+                count={completedToday.length}
+                collapsible
+                data-testid="section-completed-today"
+              >
+                {completedToday.map((q) => (
+                  <QuestRow key={q.id} quest={q} variant="completed" expanded />
+                ))}
+              </QuestSection>
+            </>
+          )}
         </>
       ) : (
         <CatalogBrowser quests={quests ?? []} />
@@ -143,7 +189,7 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
   const [category, setCategory] = useState<QuestCatalogCategory | "all">("all");
   const [difficulty, setDifficulty] = useState<"all" | "easy" | "medium" | "hard">("all");
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [addingId, setAddingId] = useState<string | null>(null);
 
   const ownedCatalogIds = useMemo(() => {
@@ -164,9 +210,8 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
     [category, difficulty, search],
   );
 
-  const pageCount = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageItems = results.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const pageItems = results.slice(0, visibleCount);
+  const hasMore = visibleCount < results.length;
 
   const addMut = useMutation({
     mutationFn: async (item: QuestCatalogItem) => {
@@ -182,21 +227,19 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
       });
       return res.json();
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/quests"] });
-    },
     onSettled: () => setAddingId(null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/quests"] }),
   });
 
   return (
-    <div className="space-y-3" data-testid="section-quest-catalog">
+    <div className="space-y-3">
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
-            setPage(0);
+            setVisibleCount(PAGE_SIZE);
           }}
           placeholder="Search catalog…"
           className="pl-9"
@@ -204,35 +247,30 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
         />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" data-testid="catalog-category-chips">
-        {(["all", ...CATEGORY_KEYS] as const).map((c) => {
-          const active = category === c;
-          return (
-            <button
-              key={c}
-              type="button"
-              onClick={() => {
-                setCategory(c);
-                setPage(0);
-              }}
-              data-testid={`catalog-cat-${c}`}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border capitalize ${
-                active
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-foreground border-card-border hover-elevate"
-              }`}
-            >
-              {c}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs
+        value={category}
+        onValueChange={(v) => {
+          setCategory(v as typeof category);
+          setVisibleCount(PAGE_SIZE);
+        }}
+      >
+        <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="all" className="text-xs">
+            All
+          </TabsTrigger>
+          {CATEGORY_KEYS.map((k) => (
+            <TabsTrigger key={k} value={k} className="text-xs capitalize">
+              {k}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <Tabs
         value={difficulty}
         onValueChange={(v) => {
           setDifficulty(v as typeof difficulty);
-          setPage(0);
+          setVisibleCount(PAGE_SIZE);
         }}
       >
         <TabsList className="w-full grid grid-cols-4">
@@ -244,7 +282,8 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
       </Tabs>
 
       <div className="text-xs text-muted-foreground px-0.5" data-testid="catalog-result-count">
-        {results.length} quests · page {safePage + 1} of {pageCount}
+        {results.length} quests
+        {hasMore ? ` · showing ${pageItems.length}` : ""}
       </div>
 
       <div className="space-y-2.5">
@@ -303,26 +342,16 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-1">
+      {hasMore && (
         <button
           type="button"
-          disabled={safePage <= 0}
-          onClick={() => setPage((p) => Math.max(0, p - 1))}
-          className="rounded-xl px-3 py-2 text-sm font-semibold surface hover-elevate disabled:opacity-40"
-          data-testid="button-catalog-prev"
+          onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+          className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold surface hover-elevate"
+          data-testid="button-catalog-load-more"
         >
-          Previous
+          Load more
         </button>
-        <button
-          type="button"
-          disabled={safePage >= pageCount - 1}
-          onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-          className="rounded-xl px-3 py-2 text-sm font-semibold surface hover-elevate disabled:opacity-40"
-          data-testid="button-catalog-next"
-        >
-          Next
-        </button>
-      </div>
+      )}
     </div>
   );
 }

@@ -64,10 +64,13 @@ const CERT: { key: CertificationInterest; label: string }[] = [
   { key: "no", label: "No" },
 ];
 
+const EXPRESS_STEPS: Step[] = [0, 2, 6];
+
 export default function PersonalizePage() {
   const { me } = useAuth();
   const [, navigate] = useLocation();
   const [step, setStep] = useState<Step>(0);
+  const [expressMode, setExpressMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [primaryGoal, setPrimaryGoal] = useState<SkillGoalKey | null>(null);
   const [secondaryGoals, setSecondaryGoals] = useState<SkillGoalKey[]>([]);
@@ -80,10 +83,32 @@ export default function PersonalizePage() {
   const [currentRole, setCurrentRole] = useState("");
   const [targetRole, setTargetRole] = useState("");
   const [existingPathId, setExistingPathId] = useState<string | null>(null);
+  const [setAsCareerPath, setSetAsCareerPath] = useState(true);
+
+  function goBack() {
+    if (step <= 0) return;
+    if (expressMode) {
+      const idx = EXPRESS_STEPS.indexOf(step);
+      if (idx > 0) setStep(EXPRESS_STEPS[idx - 1]!);
+      return;
+    }
+    setStep((s) => (s - 1) as Step);
+  }
+
+  function goNext() {
+    if (expressMode) {
+      const idx = EXPRESS_STEPS.indexOf(step);
+      if (idx >= 0 && idx < EXPRESS_STEPS.length - 1) {
+        setStep(EXPRESS_STEPS[idx + 1]!);
+      }
+      return;
+    }
+    setStep((s) => (s + 1) as Step);
+  }
 
   useRegisterBackHandler(() => {
     if (step <= 0) return false;
-    setStep((s) => (s - 1) as Step);
+    goBack();
     return true;
   }, step > 0);
 
@@ -163,13 +188,16 @@ export default function PersonalizePage() {
     if (!me?.id || !primaryGoal) return;
     setBusy(true);
     try {
-      const topPath = existingPathId; // only keep a path the user already started/saved
+      const recommendedId = planPreview.path?.item.id ?? null;
+      const activeCareerPathId = setAsCareerPath
+        ? (existingPathId ?? recommendedId)
+        : (existingPathId ?? null);
       await writePersonalization(String(me.id), {
         ...draftPrefs,
         primaryGoal,
         personalizationCompleted: true,
         softPromptDismissedAt: null,
-        activeCareerPathId: topPath,
+        activeCareerPathId,
       });
       navigate("/");
     } finally {
@@ -186,11 +214,15 @@ export default function PersonalizePage() {
     step === 5 ||
     step === 6;
 
+  const stepLabel = expressMode
+    ? `Step ${Math.max(1, EXPRESS_STEPS.indexOf(step) + 1)} of 3`
+    : `Step ${Math.min(step + 1, 7)} of 7`;
+
   return (
     <div className="space-y-5 max-w-lg mx-auto pb-8">
       <div className="space-y-1">
         <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-          Step {Math.min(step + 1, 7)} of 7
+          {stepLabel}
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight">Personalize Level Up Life</h1>
         <p className="text-sm text-muted-foreground">
@@ -200,6 +232,30 @@ export default function PersonalizePage() {
 
       {step === 0 && (
         <StepBlock title="What do you want to improve most right now?">
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setExpressMode(true)}
+              data-testid="button-express-setup"
+              className={`rounded-xl px-3 py-2.5 text-left border transition-colors ${
+                expressMode ? "border-primary bg-primary/10" : "border-card-border surface"
+              }`}
+            >
+              <div className="font-semibold text-sm">Quick setup</div>
+              <div className="text-xs text-muted-foreground mt-0.5">3 steps</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpressMode(false)}
+              data-testid="button-full-setup"
+              className={`rounded-xl px-3 py-2.5 text-left border transition-colors ${
+                !expressMode ? "border-primary bg-primary/10" : "border-card-border surface"
+              }`}
+            >
+              <div className="font-semibold text-sm">Full setup</div>
+              <div className="text-xs text-muted-foreground mt-0.5">All preferences</div>
+            </button>
+          </div>
           <OptionGrid
             options={PRIMARY_GOAL_OPTIONS.map((o) => ({
               key: o.key,
@@ -338,6 +394,24 @@ export default function PersonalizePage() {
           {planPreview.hustle && incomeInterest !== "not_now" && (
             <PlanRow label="Potential side hustle" value={planPreview.hustle.item.name} />
           )}
+          {planPreview.path && (
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={setAsCareerPath}
+                onChange={(e) => setSetAsCareerPath(e.target.checked)}
+                className="mt-0.5 rounded border-card-border"
+                data-testid="checkbox-set-career-path"
+              />
+              <span>
+                <span className="font-semibold">Set as my current career path</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  {planPreview.path.item.title}
+                  {existingPathId ? " (keeps your existing path if already set)" : ""}
+                </span>
+              </span>
+            </label>
+          )}
           <p className="text-xs text-muted-foreground">
             Career and income outcomes vary. Guides are educational — not guarantees.
           </p>
@@ -358,7 +432,7 @@ export default function PersonalizePage() {
           <button
             type="button"
             disabled={step === 0}
-            onClick={() => setStep((s) => (s - 1) as Step)}
+            onClick={goBack}
             className="rounded-xl px-3 py-2 text-sm flex items-center gap-1 disabled:opacity-40 hover-elevate"
           >
             <ChevronLeft className="w-4 h-4" /> Back
@@ -366,7 +440,7 @@ export default function PersonalizePage() {
           <button
             type="button"
             disabled={!canNext}
-            onClick={() => setStep((s) => (s + 1) as Step)}
+            onClick={goNext}
             data-testid="button-personalize-next"
             className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold flex items-center gap-1 disabled:opacity-50 hover-elevate"
           >

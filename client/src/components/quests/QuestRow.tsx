@@ -14,7 +14,7 @@ type Props = {
   onDelete?: () => void;
   isCompleting?: boolean;
   showDelete?: boolean;
-  /** Wrap the row in a full-width button (Dashboard tap-to-complete). */
+  /** @deprecated Full-row tap removed — use the complete ring. Kept for call-site compat. */
   interactive?: boolean;
   /** Expand description instead of clamping (detail / catalog). */
   expanded?: boolean;
@@ -27,7 +27,6 @@ export function QuestRow({
   onDelete,
   isCompleting = false,
   showDelete = false,
-  interactive = false,
   expanded = false,
 }: Props) {
   const m = diffMeta[quest.difficulty] ?? diffMeta.easy;
@@ -38,30 +37,23 @@ export function QuestRow({
   // Never show a check on active rows — it reads as "already done".
   const completeControl =
     variant === "active" ? (
-      interactive ? (
-        <span
-          className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center border-primary/40 bg-primary/10"
-          aria-hidden
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onComplete?.();
-          }}
-          disabled={busy}
-          data-testid={`button-complete-${quest.id}`}
-          className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all hover-elevate active-elevate-2 border-primary/50 bg-transparent text-primary disabled:opacity-60"
-          aria-label={`Complete quest: ${quest.title}`}
-        >
-          {busy ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/70" aria-hidden />
-          )}
-        </button>
-      )
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onComplete?.();
+        }}
+        disabled={busy || !onComplete}
+        data-testid={`button-complete-${quest.id}`}
+        className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all hover-elevate active-elevate-2 border-primary/50 bg-transparent text-primary disabled:opacity-60"
+        aria-label={`Mark complete: ${quest.title}`}
+      >
+        {busy ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/70" aria-hidden />
+        )}
+      </button>
     ) : (
       <span
         className="w-10 h-10 rounded-full border-2 flex-shrink-0 flex items-center justify-center bg-primary border-primary text-primary-foreground"
@@ -71,8 +63,11 @@ export function QuestRow({
       </span>
     );
 
-  const inner = (
-    <>
+  return (
+    <div
+      data-testid={`row-quest-${quest.id}`}
+      className={`surface rounded-2xl p-4 flex items-start gap-3 ${isCompleted ? "opacity-80" : ""}`}
+    >
       {completeControl}
       <div className="min-w-0 flex-1">
         <div
@@ -97,6 +92,9 @@ export function QuestRow({
           >
             {m.label}
           </span>
+          {variant === "active" && onComplete && (
+            <span className="text-[10px] text-primary/80">Tap ring to complete</span>
+          )}
         </div>
       </div>
       <div className="text-right shrink-0 self-start pt-0.5">
@@ -117,33 +115,6 @@ export function QuestRow({
           <Trash2 className="w-4 h-4" />
         </button>
       )}
-    </>
-  );
-
-  const className = `surface rounded-2xl p-4 flex items-start gap-3 ${
-    interactive && variant === "active"
-      ? "w-full text-left hover-elevate active-elevate-2"
-      : ""
-  } ${isCompleted ? "opacity-80" : ""}`;
-
-  if (interactive && variant === "active") {
-    return (
-      <button
-        type="button"
-        onClick={onComplete}
-        disabled={busy}
-        data-testid={`row-quest-${quest.id}`}
-        className={className}
-        aria-label={`Complete quest: ${quest.title}`}
-      >
-        {inner}
-      </button>
-    );
-  }
-
-  return (
-    <div data-testid={`row-quest-${quest.id}`} className={className}>
-      {inner}
     </div>
   );
 }

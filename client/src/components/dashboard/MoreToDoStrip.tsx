@@ -13,6 +13,7 @@ export function MoreToDoStrip() {
   const sideQuest = (quests ?? []).find(
     (q) => !q.isDaily && q.active !== false && !q.completedToday,
   );
+  const sideQuestIsHard = sideQuest?.difficulty === "hard";
 
   return (
     <section className="space-y-2.5" data-testid="section-more-to-do">
@@ -33,7 +34,24 @@ export function MoreToDoStrip() {
           </div>
         </Link>
 
-        {sideQuest ? (
+        {sideQuest && sideQuestIsHard ? (
+          <Link
+            href="/quests"
+            data-testid="more-side-quest"
+            className="surface rounded-xl p-3.5 flex items-start gap-3 hover-elevate text-left"
+          >
+            <div className="w-9 h-9 rounded-lg bg-secondary/60 flex items-center justify-center shrink-0">
+              <Swords className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Side quest</div>
+              <div className="font-semibold text-sm line-clamp-2">{sideQuest.title}</div>
+              <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+                Hard · Open quests to complete
+              </div>
+            </div>
+          </Link>
+        ) : sideQuest ? (
           <button
             type="button"
             data-testid="more-side-quest"
@@ -50,6 +68,7 @@ export function MoreToDoStrip() {
               <div className="text-xs text-muted-foreground mt-0.5 capitalize">
                 {sideQuest.category} · +{sideQuest.xpReward} XP
               </div>
+              <div className="text-[11px] text-primary font-semibold mt-1">Mark complete</div>
             </div>
           </button>
         ) : (
