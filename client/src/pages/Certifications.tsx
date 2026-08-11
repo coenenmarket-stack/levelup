@@ -28,6 +28,7 @@ import {
   writeCertProgress,
   type CertGuideProgress,
 } from "@/lib/personalization/guideProgress";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 const COST_COLORS: Record<CertCost, string> = {
   Free: "text-primary",
@@ -44,6 +45,12 @@ export default function CertificationsPage() {
   const [filter, setFilter] = useState<CertCategory | "All" | "Saved" | "Goals">("All");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [progress, setProgress] = useState<CertProgress>(() => mergeCertProgress(null));
+
+  useRegisterBackHandler(() => {
+    if (!detailId) return false;
+    setDetailId(null);
+    return true;
+  }, detailId != null);
 
   useEffect(() => {
     let cancelled = false;

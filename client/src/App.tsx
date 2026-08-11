@@ -9,6 +9,7 @@ import { GameProvider } from "./lib/game";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { AppShell } from "./components/AppShell";
 import { InstallIosPrompt } from "./components/InstallIosPrompt";
+import { BackHandlerProvider } from "./lib/navigation/BackHandlerContext";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -178,7 +179,9 @@ function App() {
           <Toaster />
           <Router hook={useHashLocation}>
             <AuthProvider>
-              <GatedApp />
+              <BackHandlerProvider>
+                <GatedApp />
+              </BackHandlerProvider>
             </AuthProvider>
           </Router>
         </TooltipProvider>

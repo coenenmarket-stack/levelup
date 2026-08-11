@@ -39,6 +39,7 @@ import { AVATAR_CLASSES } from "@shared/schema";
 import type { Category } from "@/lib/types";
 import { FeatureUnavailable } from "@/components/FeatureUnavailable";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map((a) => [a.key, a.emoji]));
 const SKILL_ORDER = ["health", "wealth", "career", "family", "mindset"] as const;
@@ -70,6 +71,12 @@ export default function FriendsPage() {
     level: number;
     title?: string | null;
   }>>([]);
+
+  useRegisterBackHandler(() => {
+    if (!selectedFriend) return false;
+    setSelectedFriend(null);
+    return true;
+  }, selectedFriend != null);
 
   const uid = me?.id ? String(me.id) : "";
   const gated = !LAUNCH_FLAGS.friendsEnabled;
