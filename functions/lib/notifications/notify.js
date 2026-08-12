@@ -17,7 +17,7 @@ const HREF = {
     party_challenge_complete: "/social?tab=parties",
     referral_activated: "/invite",
     achievement_milestone: "/achievements",
-    weekly_reward: "/#weekly-challenges",
+    weekly_reward: "/?focus=weekly-challenges",
 };
 async function notifyUserSafe(uid, category, title, body, data = {}, deps) {
     try {

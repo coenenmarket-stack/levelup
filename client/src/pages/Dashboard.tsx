@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Flame, RefreshCw, Loader2, Sparkles } from "lucide-react";
 import { useGame } from "@/lib/game";
@@ -31,6 +31,7 @@ import { SocialHomeCard } from "@/components/SocialHomeCard";
 import { PushOptInCard } from "@/components/PushOptInCard";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { scrollToDeepLinkFocus } from "@/lib/notificationDeepLinks";
 import { readPersonalization } from "@/lib/personalization/store";
 import {
   DEFAULT_PERSONALIZATION,
@@ -54,6 +55,7 @@ type DailyPack = { quests: Quest[]; cached?: boolean; allComplete?: boolean };
 export default function Dashboard() {
   const { character, completeQuest, completingQuestId } = useGame();
   const { me } = useAuth();
+  const [loc] = useLocation();
   const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
@@ -68,6 +70,10 @@ export default function Dashboard() {
   const { data: weekly } = useQuery<WeeklyChallengeState>({
     queryKey: ["/api/weekly-challenges"],
   });
+
+  useEffect(() => {
+    scrollToDeepLinkFocus(loc);
+  }, [loc]);
 
   useEffect(() => {
     if (!me?.id) return;
@@ -209,11 +215,7 @@ export default function Dashboard() {
           <span>Total: <span className="text-foreground font-num">{character.totalXp.toLocaleString()}</span> XP</span>
           {LAUNCH_FLAGS.rewardsShopEnabled ? (
             <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
-          ) : (
-            <span className="text-[10px] text-muted-foreground/80" title="Rewards shop coming later">
-              Rewards shop soon
-            </span>
-          )}
+          ) : null}
         </div>
         <StreakStatusStrip
           currentStreak={character.currentStreak}
@@ -224,10 +226,12 @@ export default function Dashboard() {
 
       <WeeklyClaimChip count={weeklyClaimable} />
 
-      {/* Avoid competing personalize CTAs when soft prompt is visible; hide next-action when mission is the clear focus */}
-      {!showSoftPrompt && !(mission.quest && nextAction?.kind === "finish_daily_quests") && (
-        <RecommendedNextActionCard action={nextAction} />
-      )}
+      {/* Soft prompt owns personalize; claim chip owns weekly; mission card owns daily finish */}
+      {!showSoftPrompt &&
+        nextAction.kind !== "claim_weekly" &&
+        !(mission.quest && nextAction.kind === "finish_daily_quests") && (
+          <RecommendedNextActionCard action={nextAction} />
+        )}
 
       {/* 2. Today's Mission (focus copy folded into subtitle when present) */}
       <TodaysMissionCard

@@ -247,24 +247,29 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
         />
       </div>
 
-      <Tabs
-        value={category}
-        onValueChange={(v) => {
-          setCategory(v as typeof category);
-          setVisibleCount(PAGE_SIZE);
-        }}
-      >
-        <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="all" className="text-xs">
-            All
-          </TabsTrigger>
-          {CATEGORY_KEYS.map((k) => (
-            <TabsTrigger key={k} value={k} className="text-xs capitalize">
-              {k}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" data-swipe-scroll data-testid="catalog-category-chips">
+        {(["all", ...CATEGORY_KEYS] as const).map((c) => {
+          const active = category === c;
+          return (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setCategory(c);
+                setVisibleCount(PAGE_SIZE);
+              }}
+              data-testid={`catalog-cat-${c}`}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border capitalize ${
+                active
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-foreground border-card-border hover-elevate"
+              }`}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
 
       <Tabs
         value={difficulty}

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Sparkles, Swords, User, GraduationCap, Compass, Map, Target } from "lucide-react";
+import { Sparkles, Swords, User, GraduationCap, Briefcase, Compass, Map, Target } from "lucide-react";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 /** Trimmed journey grid — core destinations only (rest live in the menu). */
@@ -40,14 +40,17 @@ export function ContinueJourney() {
           </Link>
         ))}
       </div>
-      <Link
-        href="/certifications"
-        data-testid="journey-certs-link"
-        className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1"
-      >
-        <GraduationCap className="w-3.5 h-3.5" />
-        Certifications & side hustles in the menu
-      </Link>
+      <div className="flex items-center justify-center gap-3 text-xs text-muted-foreground py-1">
+        <Link href="/certifications" data-testid="journey-certs-link" className="inline-flex items-center gap-1 hover:text-foreground">
+          <GraduationCap className="w-3.5 h-3.5" />
+          Certs
+        </Link>
+        <span aria-hidden>·</span>
+        <Link href="/side-hustles" data-testid="journey-hustles-link" className="inline-flex items-center gap-1 hover:text-foreground">
+          <Briefcase className="w-3.5 h-3.5" />
+          Hustles
+        </Link>
+      </div>
     </section>
   );
 }

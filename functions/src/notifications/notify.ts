@@ -20,7 +20,7 @@ const HREF: Record<string, string> = {
   party_challenge_complete: "/social?tab=parties",
   referral_activated: "/invite",
   achievement_milestone: "/achievements",
-  weekly_reward: "/#weekly-challenges",
+  weekly_reward: "/?focus=weekly-challenges",
 };
 
 export async function notifyUserSafe(

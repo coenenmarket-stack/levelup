@@ -38,6 +38,8 @@ type MenuItem = {
   icon: LucideIcon;
   testId: string;
   flag?: keyof typeof LAUNCH_FLAGS;
+  /** Visible if ANY of these flags is on (e.g. social hub). */
+  anyOfFlags?: Array<keyof typeof LAUNCH_FLAGS>;
 };
 
 type MenuSection = { title: string; items: MenuItem[] };
@@ -81,7 +83,7 @@ const menuSections: MenuSection[] = [
         label: "Challenges & Parties",
         icon: Users,
         testId: "menu-social",
-        flag: "socialChallengesEnabled",
+        anyOfFlags: ["socialChallengesEnabled", "partiesEnabled"],
       },
       {
         href: "/leaderboard",
@@ -109,6 +111,9 @@ const menuSections: MenuSection[] = [
 ];
 
 function itemVisible(item: MenuItem): boolean {
+  if (item.anyOfFlags?.length) {
+    return item.anyOfFlags.some((f) => LAUNCH_FLAGS[f] === true);
+  }
   if (!item.flag) return true;
   return LAUNCH_FLAGS[item.flag] === true;
 }

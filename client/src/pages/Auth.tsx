@@ -182,11 +182,23 @@ export default function AuthPage() {
         footer={
           <span>
             By continuing, you agree to the{" "}
-            <a className="underline underline-offset-2" href="/terms.html" target="_blank" rel="noreferrer">
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/terms.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-terms"
+            >
               Terms
             </a>{" "}
             &{" "}
-            <a className="underline underline-offset-2" href="/privacy.html" target="_blank" rel="noreferrer">
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-privacy"
+            >
               Privacy Policy
             </a>
             .
@@ -220,8 +232,13 @@ export default function AuthPage() {
         <form onSubmit={handleLogin} className="space-y-3">
           <FieldEmail value={email} onChange={setEmail} />
           <FieldPassword value={password} onChange={setPassword} show={showPw} toggle={() => setShowPw(s => !s)} />
-          <div className="flex justify-end">
-            <button type="button" onClick={() => setMode("forgot")} className="text-xs text-primary hover:underline" data-testid="link-forgot">
+          <div className="flex justify-end -mr-1">
+            <button
+              type="button"
+              onClick={() => setMode("forgot")}
+              className="text-xs text-primary hover:underline px-2 py-2 min-h-11"
+              data-testid="link-forgot"
+            >
               Forgot password?
             </button>
           </div>
@@ -230,7 +247,12 @@ export default function AuthPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           New here?{" "}
-          <button onClick={() => setMode("signup")} className="text-primary font-semibold hover:underline" data-testid="link-signup">
+          <button
+            type="button"
+            onClick={() => setMode("signup")}
+            className="text-primary font-semibold hover:underline px-1 py-2 min-h-11 inline-flex items-center"
+            data-testid="link-signup"
+          >
             Create account
           </button>
         </p>
@@ -245,11 +267,23 @@ export default function AuthPage() {
         footer={
           <span>
             By creating an account, you agree to the{" "}
-            <a className="underline underline-offset-2" href="/terms.html" target="_blank" rel="noreferrer">
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/terms.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-terms-signup"
+            >
               Terms
             </a>{" "}
             &{" "}
-            <a className="underline underline-offset-2" href="/privacy.html" target="_blank" rel="noreferrer">
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-privacy-signup"
+            >
               Privacy Policy
             </a>
             .

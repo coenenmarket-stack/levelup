@@ -80,15 +80,25 @@ export default function SocialHubPage() {
           Shared challenges with friends, and small parties for team goals.
         </p>
         <p className="text-xs text-muted-foreground mt-2">
-          Manage friends on{" "}
-          <Link href="/friends" className="underline text-primary">
-            Friends
-          </Link>
-          . Weekly ranks on{" "}
-          <Link href="/leaderboard" className="underline text-primary">
-            Leaderboard
-          </Link>
-          .
+          {LAUNCH_FLAGS.friendsEnabled && (
+            <>
+              Manage friends on{" "}
+              <Link href="/friends" className="underline text-primary">
+                Friends
+              </Link>
+              .
+            </>
+          )}
+          {LAUNCH_FLAGS.friendsEnabled && LAUNCH_FLAGS.leaderboardsEnabled ? " " : null}
+          {LAUNCH_FLAGS.leaderboardsEnabled && (
+            <>
+              Weekly ranks on{" "}
+              <Link href="/leaderboard" className="underline text-primary">
+                Leaderboard
+              </Link>
+              .
+            </>
+          )}
         </p>
       </div>
 
@@ -243,11 +253,17 @@ function SharedChallengesPanel({ uid }: { uid: string }) {
         </div>
         {friendUids.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Add friends first on{" "}
-            <Link href="/friends" className="underline text-primary">
-              Friends
-            </Link>
-            .
+            {LAUNCH_FLAGS.friendsEnabled ? (
+              <>
+                Add friends first on{" "}
+                <Link href="/friends" className="underline text-primary">
+                  Friends
+                </Link>
+                .
+              </>
+            ) : (
+              <>Add friends before inviting them to a challenge.</>
+            )}
           </p>
         ) : (
           <>

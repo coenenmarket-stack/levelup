@@ -89,7 +89,7 @@ export default function ProfilePage() {
         {/* Top row stats */}
         <div
           className={`mt-4 grid gap-2 text-center ${
-            LAUNCH_FLAGS.rewardsShopEnabled || stats != null ? "grid-cols-4" : "grid-cols-3"
+            LAUNCH_FLAGS.rewardsShopEnabled ? "grid-cols-4" : "grid-cols-3"
           }`}
         >
           <StatPill label="Level" value={character.level} gold />
@@ -97,8 +97,6 @@ export default function ProfilePage() {
           <StatPill label="Streak" value={character.currentStreak} icon={<Flame className={`w-3 h-3 text-accent ${character.currentStreak > 0 ? "animate-flame" : ""}`} />} />
           {LAUNCH_FLAGS.rewardsShopEnabled ? (
             <StatPill label="XP Pool" value={character.spendableXp.toLocaleString()} icon={<Coins className="w-3 h-3 text-accent" />} />
-          ) : stats != null ? (
-            <StatPill label="Quests" value={stats.tasksCompleted ?? 0} icon={<Trophy className="w-3 h-3 text-accent" />} />
           ) : null}
         </div>
 

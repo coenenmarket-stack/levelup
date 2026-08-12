@@ -302,10 +302,14 @@ export default function FriendsPage() {
           <Link href="/invite" className="underline text-primary">
             Referral details
           </Link>
-          {" · "}
-          <Link href="/social" className="underline text-primary">
-            Challenges & parties
-          </Link>
+          {(LAUNCH_FLAGS.socialChallengesEnabled || LAUNCH_FLAGS.partiesEnabled) && (
+            <>
+              {" · "}
+              <Link href="/social" className="underline text-primary">
+                Challenges & parties
+              </Link>
+            </>
+          )}
         </p>
       </div>
 

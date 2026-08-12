@@ -427,7 +427,18 @@ export default function PersonalizePage() {
         </section>
       )}
 
-      {step < 6 && (
+      {step === 6 ? (
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <button
+            type="button"
+            onClick={goBack}
+            className="rounded-xl px-3 py-2 text-sm flex items-center gap-1 hover-elevate"
+            data-testid="button-personalize-back-finish"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back
+          </button>
+        </div>
+      ) : (
         <div className="flex items-center justify-between gap-3 pt-2">
           <button
             type="button"
