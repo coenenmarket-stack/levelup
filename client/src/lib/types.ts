@@ -70,6 +70,8 @@ export type Quest = {
   createdAt: string;
   completedToday?: boolean;
   catalogId?: string | null;
+  /** Optional how-to steps (from catalog when available). */
+  howto?: string | null;
 };
 
 export type Achievement = {

@@ -395,7 +395,7 @@ async function callRedeemReward(uid: string, rewardId: string) {
 }
 
 /**
- * Catalog-driven daily pack (750-quest library, weakest-skill bias).
+ * Catalog-driven daily pack (1,000-quest library, weakest-skill bias).
  * Writes characters/{uid}/dailyPacks/{date} + pack_* quest docs.
  * If `refresh=true`, keeps completed slots and replaces the rest.
  */

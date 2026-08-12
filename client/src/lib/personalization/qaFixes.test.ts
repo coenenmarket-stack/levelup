@@ -27,12 +27,12 @@ function prefs(partial: Partial<PersonalizationPrefs>): PersonalizationPrefs {
 }
 
 describe("content cross-links", () => {
-  it("has 30 career paths, 56 certs, 61 hustles, 750 quests", () => {
+  it("has 30 career paths, 56 certs, 61 hustles, 1000 quests", () => {
     assert.equal(CAREER_PATH_COUNT, 30);
     assert.equal(CAREER_PATHS.length, 30);
     assert.equal(CERTIFICATIONS.length, 56);
     assert.equal(SIDE_HUSTLES.length, 61);
-    assert.equal(QUEST_CATALOG.length, 750);
+    assert.equal(QUEST_CATALOG.length, 1000);
   });
 
   it("has unique path ids and titles", () => {
