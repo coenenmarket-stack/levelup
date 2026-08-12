@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { useGame } from "@/lib/game";
@@ -11,6 +11,11 @@ import { useTheme } from "@/lib/theme";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronRight, LogOut, Trash2, Lock, Mail, ShieldAlert, X, Check, Loader2, Upload } from "lucide-react";
 import { compressAvatar } from "@/lib/imageUpload";
+import { readSocialUserPrefs, writeSocialUserPrefs } from "@/lib/social/api";
+import type { SocialUserPrefs } from "@/lib/social/api";
+import { LAUNCH_FLAGS, isSocialSurfaceEnabled } from "@/lib/featureFlags";
+import { useRegisterBackHandler } from "@/lib/navigation/BackHandlerContext";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const AVATAR_CLASSES = [
   { key: "warrior", name: "Warrior", emoji: "⚔️" },
@@ -44,12 +49,19 @@ type Panel = null | "profile" | "avatar" | "class" | "goals" | "password" | "del
 export default function SettingsPage() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const { me, logout, changePassword, updateSettings, deleteAccount } = useAuth();
+  const { me, logout, changePassword, updateSettings, deleteAccount, refresh } = useAuth();
   const { character } = useGame();
   const { theme, toggle: toggleTheme } = useTheme();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [panel, setPanel] = useState<Panel>(null);
   const [busy, setBusy] = useState(false);
+
+  useRegisterBackHandler(() => {
+    if (!panel) return false;
+    setPanel(null);
+    return true;
+  }, panel != null);
 
   // Field-local drafts
   const [name, setName] = useState("");
@@ -121,14 +133,15 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      {confirmDialog}
       <div className="space-y-0.5">
         <h1 className="text-2xl font-extrabold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your account and your character.</p>
       </div>
 
-      {/* Account card */}
-      <section className="surface rounded-2xl p-4 space-y-3">
-        <div className="flex items-center gap-3">
+      {/* Account */}
+      <SettingsGroup title="Account">
+        <div className="px-4 py-3.5 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center">
             <Mail className="w-4 h-4 text-primary" />
           </div>
@@ -141,25 +154,219 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* Character section */}
-      <SettingsGroup title="Character">
         <Row label="Edit profile" sub={`${character.name}${character.pronouns ? " · " + character.pronouns : ""}`} onClick={() => setPanel("profile")} testId="row-edit-profile" />
         <Row label="Change avatar" sub={`Current: ${AVATAR_CLASSES.find(a => a.key === character.avatar)?.name ?? "Unknown"}`} onClick={() => setPanel("avatar")} testId="row-change-avatar" />
         <Row label="Change class" sub={`Current: ${STARTING_CLASSES.find(c => c.key === character.className)?.name ?? "Unknown"}`} onClick={() => setPanel("class")} testId="row-change-class" />
         <Row label="Update life goals" sub={`${goals.length} selected`} onClick={() => setPanel("goals")} testId="row-update-goals" />
       </SettingsGroup>
 
-      {/* Preferences */}
-      <SettingsGroup title="Preferences">
+      <SettingsGroup title="Personalization">
+        <Row
+          label="Goals & plan preferences"
+          sub="Primary focus, time, career interests, intensity"
+          onClick={() => navigate("/personalize")}
+          testId="row-personalize"
+        />
+        <Row
+          label="Career paths"
+          sub="Browse and track progression paths"
+          onClick={() => navigate("/career-paths")}
+          testId="row-career-paths"
+        />
+        <Row
+          label="Tracked goals"
+          sub="Skill, cert, path, and custom targets"
+          onClick={() => navigate("/goals")}
+          testId="row-tracked-goals"
+        />
+      </SettingsGroup>
+
+      {/* Notifications — Progress (local) */}
+      <SettingsGroup title="Notifications · Progress">
         <ToggleRow
-          label="Notifications"
-          sub="Daily quest reminders and streak alerts"
+          label="Enable reminders"
+          sub={me.notificationsEnabled
+            ? "Local reminders for quests, streaks, and weekly challenges"
+            : "Off — Level Up Life will not schedule local reminders"}
           value={me.notificationsEnabled}
-          onChange={(v) => updateSettings({ notificationsEnabled: v })}
+          onChange={async (v) => {
+            if (v) {
+              const ok = await confirm({
+                title: "Enable reminders?",
+                description:
+                  "Level Up Life can remind you about daily missions, streak risk, and weekly challenges. Continue to allow notifications?",
+                confirmLabel: "Continue",
+              });
+              if (!ok) return;
+              const { requestNotificationPermission, syncNotificationsForUser } = await import("@/lib/notifications");
+              const { doc, setDoc } = await import("firebase/firestore");
+              const { db } = await import("@/lib/firebase");
+              const uid = String(me.id);
+
+              const localPerm = await requestNotificationPermission();
+              if (localPerm === "denied") {
+                await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+                await setDoc(
+                  doc(db, "users", uid),
+                  {
+                    pushPermission: "denied",
+                    pushEnabled: false,
+                    notificationsEnabled: false,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true },
+                );
+                await refresh();
+                toast({
+                  title: "Notifications blocked",
+                  description:
+                    "Open iOS Settings → Level Up Life → Notifications to enable them later.",
+                  variant: "destructive",
+                });
+                return;
+              }
+
+              let remoteOk = false;
+              let pushPerm: string = localPerm === "granted" ? "granted" : "prompt";
+              if (LAUNCH_FLAGS.remotePushEnabled) {
+                const { registerPushForUser, checkPushPermission } = await import("@/lib/pushNotifications");
+                const push = await registerPushForUser(uid);
+                pushPerm = push.ok ? "granted" : (await checkPushPermission());
+                if (!push.ok && push.reason === "denied") {
+                  await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+                  await setDoc(
+                    doc(db, "users", uid),
+                    { pushPermission: "denied", pushEnabled: false, updatedAt: new Date().toISOString() },
+                    { merge: true },
+                  );
+                  await refresh();
+                  toast({
+                    title: "Push permission denied",
+                    description:
+                      "You can enable it later in iOS Settings → Level Up Life → Notifications.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                remoteOk = push.ok || push.reason === "unsupported";
+              }
+
+              await updateSettings({
+                notificationsEnabled: true,
+                pushEnabled: LAUNCH_FLAGS.remotePushEnabled && remoteOk,
+              });
+              await setDoc(
+                doc(db, "users", uid),
+                {
+                  pushPermission: pushPerm,
+                  pushEnabled: LAUNCH_FLAGS.remotePushEnabled && remoteOk,
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+                  updatedAt: new Date().toISOString(),
+                },
+                { merge: true },
+              );
+              await refresh();
+              await syncNotificationsForUser({
+                prefs: {
+                  notificationsEnabled: true,
+                  notifyDailyQuests: me.notifyDailyQuests !== false,
+                  notifyStreakRisk: me.notifyStreakRisk !== false,
+                  notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                },
+                currentStreak: character.currentStreak,
+                longestStreak: character.longestStreak,
+                lastCompletionDate: character.lastCompletionDate,
+              });
+            } else {
+              await updateSettings({ notificationsEnabled: false, pushEnabled: false });
+              await refresh();
+              const { cancelAllRetentionNotifications } = await import("@/lib/notifications");
+              await cancelAllRetentionNotifications();
+            }
+          }}
           testId="toggle-notifications"
         />
+        {!me.notificationsEnabled && (
+          <p className="text-[11px] text-muted-foreground px-1 pb-1" data-testid="text-notify-denied-hint">
+            If you previously denied permission, enable notifications in iOS Settings → Level Up Life, then turn this
+            back on.
+          </p>
+        )}
+        {me.notificationsEnabled && (
+          <>
+            <ToggleRow
+              label="Daily quest reminder"
+              sub="Early evening if missions remain"
+              value={me.notifyDailyQuests !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyDailyQuests: v });
+                await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: v,
+                    notifyStreakRisk: me.notifyStreakRisk !== false,
+                    notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
+              }}
+              testId="toggle-notify-daily"
+            />
+            <ToggleRow
+              label="Streak reminder"
+              sub="Later evening only when your streak is at risk"
+              value={me.notifyStreakRisk !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyStreakRisk: v });
+                await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: me.notifyDailyQuests !== false,
+                    notifyStreakRisk: v,
+                    notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
+              }}
+              testId="toggle-notify-streak"
+            />
+            <ToggleRow
+              label="Weekly challenge reminder"
+              sub="Near the end of the week if incomplete"
+              value={me.notifyWeeklyChallenges !== false}
+              onChange={async (v) => {
+                await updateSettings({ notifyWeeklyChallenges: v });
+                await refresh();
+                const { syncNotificationsForUser } = await import("@/lib/notifications");
+                await syncNotificationsForUser({
+                  prefs: {
+                    notificationsEnabled: true,
+                    notifyDailyQuests: me.notifyDailyQuests !== false,
+                    notifyStreakRisk: me.notifyStreakRisk !== false,
+                    notifyWeeklyChallenges: v,
+                  },
+                  currentStreak: character.currentStreak,
+                  longestStreak: character.longestStreak,
+                  lastCompletionDate: character.lastCompletionDate,
+                });
+              }}
+              testId="toggle-notify-weekly"
+            />
+          </>
+        )}
+      </SettingsGroup>
+
+      <SocialPrivacySettings uid={me.id ? String(me.id) : ""} showLifeGoal={me.showLifeGoal !== false} onShowLifeGoal={(v) => updateSettings({ showLifeGoal: v })} />
+
+      <SettingsGroup title="App">
         <ToggleRow
           label="Dark mode"
           sub="Recommended for the RPG vibe"
@@ -409,6 +616,215 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <div className="mt-1.5">{children}</div>
       {hint && <p className="text-[10px] text-muted-foreground mt-1">{hint}</p>}
     </div>
+  );
+}
+
+function SocialPrivacySettings({
+  uid,
+  showLifeGoal,
+  onShowLifeGoal,
+}: {
+  uid: string;
+  showLifeGoal: boolean;
+  onShowLifeGoal: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const showSocial = isSocialSurfaceEnabled();
+  const showEmail = LAUNCH_FLAGS.emailNotificationsEnabled;
+  const showRemoteSocialNotify = LAUNCH_FLAGS.remotePushEnabled && showSocial;
+
+  const prefsQuery = useQuery({
+    queryKey: ["social-user-prefs", uid],
+    enabled: !!uid && (showSocial || showEmail || showRemoteSocialNotify),
+    queryFn: () => readSocialUserPrefs(uid),
+  });
+  const prefs = prefsQuery.data;
+
+  const save = async (patch: Partial<SocialUserPrefs>) => {
+    if (!uid) return;
+    try {
+      await writeSocialUserPrefs(uid, patch);
+      await prefsQuery.refetch();
+    } catch (e: any) {
+      toast({ title: "Couldn't save", description: e?.message ?? String(e), variant: "destructive" });
+    }
+  };
+
+  if (!uid) return null;
+  if (!showSocial && !showEmail) return null;
+
+  return (
+    <>
+      {showSocial && (
+        <SettingsGroup title="Privacy">
+          <ToggleRow
+            label="Show life goal to friends"
+            sub="Appears on your public friend profile"
+            value={showLifeGoal}
+            onChange={onShowLifeGoal}
+            testId="toggle-show-life-goal"
+          />
+          <ToggleRow
+            label="Leaderboard participation"
+            sub="Off by default. Opt in to appear on friend/party weekly ranks."
+            value={prefs?.leaderboardOptIn === true}
+            onChange={(v) => void save({ leaderboardOptIn: v })}
+            testId="toggle-leaderboard-opt-in"
+          />
+          <ToggleRow
+            label="Show level to friends"
+            sub="Level and title on your friend profile"
+            value={prefs?.showLevelToFriends !== false}
+            onChange={(v) => void save({ showLevelToFriends: v })}
+            testId="toggle-show-level-friends"
+          />
+          <ToggleRow
+            label="Show streak to friends"
+            sub="Current streak on your friend profile"
+            value={prefs?.showStreakToFriends !== false}
+            onChange={(v) => void save({ showStreakToFriends: v })}
+            testId="toggle-show-streak-friends"
+          />
+          <ToggleRow
+            label="Show skills to friends"
+            sub="Skill levels used for compare view"
+            value={prefs?.showSkillsToFriends !== false}
+            onChange={(v) => void save({ showSkillsToFriends: v })}
+            testId="toggle-show-skills-friends"
+          />
+          <ToggleRow
+            label="Show showcase achievements"
+            sub="Up to three badges on your friend profile"
+            value={prefs?.showShowcaseAchievements !== false}
+            onChange={(v) => void save({ showShowcaseAchievements: v })}
+            testId="toggle-show-showcase"
+          />
+          <ToggleRow
+            label="Social activity visibility"
+            sub="Allow milestone events in friends' social feeds"
+            value={prefs?.showSocialActivity !== false}
+            onChange={(v) => void save({ showSocialActivity: v })}
+            testId="toggle-show-social-activity"
+          />
+        </SettingsGroup>
+      )}
+
+      {showRemoteSocialNotify && (
+        <SettingsGroup title="Notifications · Social">
+          <ToggleRow
+            label="Social notifications"
+            sub="Master switch for friend, challenge, party, and referral alerts"
+            value={prefs?.notifySocialMaster !== false}
+            onChange={(v) => void save({ notifySocialMaster: v })}
+            testId="toggle-notify-social-master"
+          />
+          {prefs?.notifySocialMaster !== false && (
+            <>
+              <ToggleRow
+                label="Friend requests"
+                sub="Incoming requests and acceptances"
+                value={prefs?.notifyFriendRequests !== false}
+                onChange={(v) => void save({ notifyFriendRequests: v })}
+                testId="toggle-notify-friend-requests"
+              />
+              <ToggleRow
+                label="Challenge invites"
+                sub="Shared challenge invitations"
+                value={prefs?.notifyChallengeInvites !== false}
+                onChange={(v) => void save({ notifyChallengeInvites: v })}
+                testId="toggle-notify-challenge-invites"
+              />
+              <ToggleRow
+                label="Challenge updates"
+                sub="Accepted or completed shared challenges"
+                value={prefs?.notifyChallengeUpdates !== false}
+                onChange={(v) => void save({ notifyChallengeUpdates: v })}
+                testId="toggle-notify-challenge-updates"
+              />
+              <ToggleRow
+                label="Party invites"
+                sub="Invitations to join a party"
+                value={prefs?.notifyPartyInvites !== false}
+                onChange={(v) => void save({ notifyPartyInvites: v })}
+                testId="toggle-notify-party-invites"
+              />
+              <ToggleRow
+                label="Party challenge updates"
+                sub="Party joined and party challenge complete"
+                value={prefs?.notifyPartyUpdates !== false}
+                onChange={(v) => void save({ notifyPartyUpdates: v })}
+                testId="toggle-notify-party-updates"
+              />
+              <ToggleRow
+                label="Referral milestones"
+                sub="When a successful referral activates"
+                value={prefs?.notifyReferralMilestones !== false}
+                onChange={(v) => void save({ notifyReferralMilestones: v })}
+                testId="toggle-notify-referral-milestones"
+              />
+            </>
+          )}
+          <ToggleRow
+            label="Quiet hours"
+            sub="Default 10:00 PM – 8:00 AM local. Routine push is skipped."
+            value={prefs?.quietHours?.enabled !== false}
+            onChange={(v) =>
+              void save({
+                quietHours: {
+                  enabled: v,
+                  startHour: prefs?.quietHours?.startHour ?? 22,
+                  endHour: prefs?.quietHours?.endHour ?? 8,
+                },
+              })
+            }
+            testId="toggle-quiet-hours"
+          />
+          <p className="text-[11px] text-muted-foreground px-1 pt-1">
+            Social alerts use remote push when enabled. Daily/streak reminders stay on local notifications.
+          </p>
+        </SettingsGroup>
+      )}
+
+      {showEmail && (
+        <SettingsGroup title="Notifications · Email">
+          <ToggleRow
+            label="Email notifications"
+            sub="Off by default. Requires a verified email. Not marketing."
+            value={prefs?.emailEnabled === true}
+            onChange={(v) => void save({ emailEnabled: v })}
+            testId="toggle-email-master"
+          />
+          {prefs?.emailEnabled === true && (
+            <>
+              <ToggleRow
+                label="Weekly progress email"
+                sub="Sunday evening summary in your timezone"
+                value={prefs?.emailWeeklyProgress === true}
+                onChange={(v) => void save({ emailWeeklyProgress: v })}
+                testId="toggle-email-weekly"
+              />
+              <ToggleRow
+                label="Goal reminders"
+                sub="Occasional nudge for active goals"
+                value={prefs?.emailGoalReminders === true}
+                onChange={(v) => void save({ emailGoalReminders: v })}
+                testId="toggle-email-goals"
+              />
+              <ToggleRow
+                label="Social digest"
+                sub="Bundled friend updates — not one email per event"
+                value={prefs?.emailSocialDigest === true}
+                onChange={(v) => void save({ emailSocialDigest: v })}
+                testId="toggle-email-social"
+              />
+            </>
+          )}
+          <p className="text-[11px] text-muted-foreground px-1 pt-1">
+            Change these anytime. Account security emails from Firebase Auth are separate.
+          </p>
+        </SettingsGroup>
+      )}
+    </>
   );
 }
 

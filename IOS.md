@@ -26,9 +26,9 @@ See sections below for Safari testing. Skip if you're going straight to the App 
 - Capacitor 8 with iOS platform (`ios/`)
 - Plugins: App, Splash Screen, Status Bar, Browser
 - Native shell init in `client/src/main.tsx`
-- Google Sign-In uses redirect on iOS + native app
-- iOS icons/splash generated via `npm run cap:assets`
-- `codemagic.yaml` — TestFlight + simulator smoke workflows
+- Google Sign-In on native: system Safari (`Browser`) → hosted `native-google-auth.html` → deep link (not WKWebView — avoids `disallowed_useragent`)
+- iOS AppIcon from `assets/icon.png` via `npm run icons` + `npm run icons:ios` (splash via `cap:assets`)
+- `codemagic.yaml` — split TestFlight workflows (launch vs OLD main) + simulator smoke
 - Portrait-only orientation, photo library permission (avatar upload)
 
 ### Local commands (Windows)
@@ -81,16 +81,20 @@ The workflow runs `app-store-connect fetch-signing-files` to create/fetch certif
 4. Bundle ID: `com.coenenmarket.leveluplife` (register in Apple Developer → Identifiers first if needed)
 5. SKU: `levelup-life` (any unique string)
 
-### 5. Trigger a build
+### 5. Trigger a build (use the NEW ICON workflow)
 
-Push to `main` or `release/*`, or start manually in Codemagic.
+Until launch assets are merged to `main`, **always** build like this:
 
-Workflow **`ios-testflight`** will:
+1. Codemagic → **Level Up Life** → **Start new build**
+2. Branch: **`cursor/app-store-launch-assets`** (not `main`)
+3. Workflow: **`Level Up Life – iOS TestFlight (NEW ICON + Google auth / app-store-launch)`**
+   - Workflow id: `ios-testflight-launch`
+4. Confirm log lines show `WORKFLOW=ios-testflight-launch` and commit includes icon fixes (`1d43fb3` or newer)
+5. Install the new TestFlight build — look for marketing version **1.0.1**
 
-1. `npm ci` → `npm run build` → `npx cap sync ios`
-2. Sign with App Store cert
-3. Build `.ipa`
-4. Upload to **TestFlight**
+Do **not** start **`OLD / main — do NOT use for icon or Google auth`** (`ios-testflight-main`). That binary still lacks the new icon pipeline and Safari Google bridge.
+
+Push to `cursor/app-store-launch-assets` also auto-triggers the launch workflow.
 
 Workflow **`ios-simulator`** is a cheaper compile-only smoke test (no signing).
 
@@ -120,7 +124,14 @@ Authorized redirect URI must include:
 
 ### Test Google Sign-In on TestFlight
 
-If redirect fails in the native WebView, next step is `@capacitor-firebase/authentication` (native Google Sign-In). Test on a real device first.
+Native builds open Safari View Controller to
+`https://level-up-life-73702.web.app/native-google-auth.html`. After Google
+succeeds, tap **Open Level Up Life** on the finish page (required — auto
+custom-scheme redirects are unreliable in SFSafariViewController).
+
+If you still see `disallowed_useragent`, the IPA was built from `main` (old
+WKWebView OAuth). Rebuild with `ios-testflight-launch` on
+`cursor/app-store-launch-assets`.
 
 ---
 
@@ -136,7 +147,7 @@ If redirect fails in the native WebView, next step is `@capacitor-firebase/authe
 
 ### Version bumps
 
-Marketing version: edit `MARKETING_VERSION` in `ios/App/App.xcodeproj/project.pbxproj` (currently `1.0`).  
+Marketing version: edit `MARKETING_VERSION` in `ios/App/App.xcodeproj/project.pbxproj` (currently `1.0.1`).  
 Build number: Codemagic sets automatically via `agvtool` using `$BUILD_NUMBER`.
 
 ---
@@ -144,11 +155,20 @@ Build number: Codemagic sets automatically via `agvtool` using `$BUILD_NUMBER`.
 ## Regenerate icons
 
 ```powershell
-# Update client/public/icon-source.png or assets/icon.png, then:
-npm run icons          # PWA web icons
-npm run cap:assets     # Native iOS asset catalog
-npm run cap:sync
+# Canonical pipeline (matches Codemagic ios-testflight-launch):
+# Source of truth: assets/icon.png (do not overwrite; replace that file to change the logo)
+npm run icons                        # PWA + assets/splash.png FROM assets/icon.png
+npm run cap:assets                   # Splash imageset (dark #0d1117 flatten)
+npm run icons:ios                    # Complete AppIcon set via sharp (overwrites cap icon)
+npm run icons:verify                 # Fail if alpha / white / non-#0d1117 corners
 ```
+
+**Important:** TestFlight only auto-builds from `main`, `release/*`, and
+`cursor/app-store-launch-assets`. Icon fixes on other branches never reach devices
+until one of those branches builds. After install, delete the app first (iOS caches
+home-screen icons), then install the newest TestFlight build and confirm its build
+number is newer than the previous one (ASC last known: build **11**). In Codemagic,
+confirm the build's git commit includes the icon fix.
 
 ---
 
@@ -159,7 +179,7 @@ npm run cap:sync
 | `capacitor.config.ts` | Capacitor app config |
 | `codemagic.yaml` | CI/CD workflows |
 | `ios/` | Native Xcode project (commit to git) |
-| `assets/icon.png` | Source for native icon generation |
+| `assets/icon.png` | **Single source of truth** for PWA, splash, and iOS AppIcon |
 | `client/src/lib/ios.ts` | Platform detection |
 | `client/src/main.tsx` | Native splash/status bar init |
 

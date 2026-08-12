@@ -9,7 +9,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import {
   doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc,
-  collection, query, where, orderBy, Timestamp, serverTimestamp,
+  collection, query, where, orderBy, Timestamp, serverTimestamp, limit,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import {
@@ -17,6 +17,13 @@ import {
   completeQuestLocal,
   redeemRewardLocal,
 } from "./gameLogic";
+import { ensureCatalogDailyPack } from "./dailyPackLocal";
+import {
+  ensureWeeklyChallenges,
+  claimWeeklyChallengeReward,
+} from "./weeklyChallenges";
+import { candidateDayKeys, dayKeyLocal } from "./dayKey";
+import { ensureAchievementDocs } from "./achievements";
 
 // ------------------------------------------------------------
 // Helpers
@@ -29,16 +36,20 @@ function requireUid(): string {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dayKeyLocal();
 }
 
-/** Load today's completed quest IDs for the signed-in user. */
+/** Load completed quest IDs for local today (+ legacy UTC today when different). */
 async function getTodayCompletedQuestIds(uid: string): Promise<Set<string>> {
-  const compSnap = await getDocs(query(
-    collection(db, "characters", uid, "completions"),
-    where("completionDate", "==", todayISO()),
-  ));
-  return new Set(compSnap.docs.map(d => String((d.data() as any).questId)));
+  const out = new Set<string>();
+  for (const day of candidateDayKeys()) {
+    const compSnap = await getDocs(query(
+      collection(db, "characters", uid, "completions"),
+      where("completionDate", "==", day),
+    ));
+    compSnap.docs.forEach((d) => out.add(String((d.data() as any).questId)));
+  }
+  return out;
 }
 
 /** Attach completedToday from today's completion log (not stored on quest docs). */
@@ -69,29 +80,31 @@ async function mergePackWithCompletions(uid: string, packQuests: Array<{ id: str
   const merged = enrichQuestsWithCompletion(packQuests, completedIds);
   const knownIds = new Set(merged.map(q => String(q.id)));
 
-  const compSnap = await getDocs(query(
-    collection(db, "characters", uid, "completions"),
-    where("completionDate", "==", todayISO()),
-  ));
+  for (const day of candidateDayKeys()) {
+    const compSnap = await getDocs(query(
+      collection(db, "characters", uid, "completions"),
+      where("completionDate", "==", day),
+    ));
 
-  for (const docSnap of compSnap.docs) {
-    const c = docSnap.data() as any;
-    const qid = String(c.questId);
-    if (!PACK_CATEGORIES.has(c.category)) continue;
-    if (knownIds.has(qid)) continue;
-    if (!completedIds.has(qid)) continue;
-    merged.push({
-      id: qid,
-      title: c.questTitle,
-      description: null,
-      category: c.category,
-      difficulty: c.difficulty ?? "easy",
-      xpReward: c.xpReward ?? 10,
-      isDaily: true,
-      active: true,
-      completedToday: true,
-    } as any);
-    knownIds.add(qid);
+    for (const docSnap of compSnap.docs) {
+      const c = docSnap.data() as any;
+      const qid = String(c.questId);
+      if (!PACK_CATEGORIES.has(c.category)) continue;
+      if (knownIds.has(qid)) continue;
+      if (!completedIds.has(qid)) continue;
+      merged.push({
+        id: qid,
+        title: c.questTitle,
+        description: null,
+        category: c.category,
+        difficulty: c.difficulty ?? "easy",
+        xpReward: c.xpReward ?? 10,
+        isDaily: true,
+        active: true,
+        completedToday: true,
+      } as any);
+      knownIds.add(qid);
+    }
   }
 
   merged.sort(
@@ -229,6 +242,7 @@ async function readCategories(uid: string) {
 }
 
 async function readAchievements(uid: string) {
+  await ensureAchievementDocs(uid);
   const snap = await getDocs(collection(db, "characters", uid, "achievements"));
   return snap.docs.map(docToObj);
 }
@@ -255,12 +269,12 @@ async function readStats(uid: string) {
     readAchievements(uid),
   ]);
 
-  // Weekly: last 7 days, sum XP and quest counts per date
+  // Weekly: last 7 local calendar days
   const days: { date: string; xp: number; quests: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const date = d.toISOString().slice(0, 10);
+    const date = dayKeyLocal(d);
     days.push({ date, xp: 0, quests: 0 });
   }
   const idx: Record<string, number> = {};
@@ -301,11 +315,32 @@ async function patchCharacter(uid: string, body: any) {
   if (body.lifeGoal) fields.lifeGoal = body.lifeGoal;
   if (body.goals) fields.goalsJson = JSON.stringify(body.goals);
   await updateDoc(doc(db, "characters", uid), fields);
-  return readCharacter(uid);
+  const character = await readCharacter(uid);
+  try {
+    const { syncPublicProfileLocal } = await import("./friends");
+    const categories = await readCategories(uid);
+    await syncPublicProfileLocal(uid, character, categories);
+  } catch (e) {
+    console.warn("public profile sync failed", e);
+  }
+  return character;
 }
 
 async function createQuest(uid: string, body: any) {
-  const payload = {
+  const catalogId = body.catalogId ? String(body.catalogId) : null;
+  if (catalogId) {
+    const existing = await getDocs(query(
+      collection(db, "characters", uid, "quests"),
+      where("catalogId", "==", catalogId),
+      limit(1),
+    ));
+    if (!existing.empty) {
+      const d = existing.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+  }
+
+  const payload: Record<string, unknown> = {
     title: body.title,
     description: body.description ?? null,
     category: body.category,
@@ -315,6 +350,7 @@ async function createQuest(uid: string, body: any) {
     active: true,
     createdAt: new Date().toISOString(),
   };
+  if (catalogId) payload.catalogId = catalogId;
   const ref = await addDoc(collection(db, "characters", uid, "quests"), payload);
   return { id: ref.id, ...payload };
 }
@@ -359,64 +395,35 @@ async function callRedeemReward(uid: string, rewardId: string) {
 }
 
 /**
- * Calls the deployed `generateQuests` Cloud Function (Gemini-backed).
- * Returns a personalized daily quest pack — one quest per skill.
- * If `refresh=true`, ignores today's cache and regenerates.
+ * Catalog-driven daily pack (1,000-quest library, weakest-skill bias).
+ * Writes characters/{uid}/dailyPacks/{date} + pack_* quest docs.
+ * If `refresh=true`, keeps completed slots and replaces the rest.
  */
 async function callGenerateQuests(uid: string, refresh: boolean) {
-  type PackQuest = {
-    id?: string;
-    category: string;
-    title: string;
-    description: string;
-    difficulty: "easy" | "medium" | "hard";
-    xpReward: number;
-    isDaily?: boolean;
-  };
-  type Pack = { quests: PackQuest[]; cached?: boolean; fallback?: boolean; allComplete?: boolean };
-
-  let pack: Pack;
-  try {
-    const { httpsCallable } = await import("firebase/functions");
-    const { functions } = await import("./firebase");
-    const fn = httpsCallable<{ refresh?: boolean }, Pack>(functions, "generateQuests");
-    const res = await fn({ refresh });
-    pack = res.data;
-  } catch (e: any) {
-    console.error("generateQuests call failed", e);
-    pack = {
-      quests: [
-        { category: "health",  title: "30-minute brisk walk",         description: "Move your body and clear your head.",          difficulty: "easy",   xpReward: 15 },
-        { category: "wealth",  title: "Log today's spending",         description: "Track every dollar that left your wallet.",     difficulty: "easy",   xpReward: 15 },
-        { category: "career",  title: "45 min deep work on top task", description: "Phone off, one tab, one task that moves the needle.", difficulty: "medium", xpReward: 30 },
-        { category: "family",  title: "Call someone you love",        description: "Five minutes can change a day.",                difficulty: "easy",   xpReward: 15 },
-        { category: "mindset", title: "10 pages of a good book",      description: "Compound your mind.",                            difficulty: "easy",   xpReward: 15 },
-      ],
-      cached: false,
-      fallback: true,
-    };
-  }
-
-  const withIds = pack.quests.map((q, i) => ({
+  const pack = await ensureCatalogDailyPack(uid, refresh);
+  const withIds = pack.quests.map((q) => ({
     ...q,
-    id: q.id ?? `fallback-${i}`,
-    isDaily: q.isDaily ?? true,
+    id: q.id,
+    isDaily: true,
   }));
   const merged = await mergePackWithCompletions(uid, withIds);
   return { ...pack, quests: merged };
 }
 
-async function callCoach(message: string) {
+async function callCoach(message: string, personalizationHint?: string) {
   // Calls the deployed `aiCoach` Cloud Function (Gemini-backed).
   // Fails soft so the UI never crashes if the function is unavailable.
   try {
     const { httpsCallable } = await import("firebase/functions");
     const { functions } = await import("./firebase");
-    const fn = httpsCallable<{ message: string }, { reply: string; fallback?: boolean }>(
-      functions,
-      "aiCoach",
-    );
-    const res = await fn({ message });
+    const fn = httpsCallable<
+      { message: string; personalizationHint?: string },
+      { reply: string; fallback?: boolean }
+    >(functions, "aiCoach");
+    const res = await fn({
+      message,
+      ...(personalizationHint ? { personalizationHint } : {}),
+    });
     return res.data;
   } catch (e: any) {
     console.error("aiCoach call failed", e);
@@ -448,6 +455,7 @@ async function route(method: string, url: string, body: any): Promise<any> {
       case "/api/rewards": return readRewards(uid);
       case "/api/stats": return readStats(uid);
       case "/api/daily-pack": return callGenerateQuests(uid, false);
+      case "/api/weekly-challenges": return ensureWeeklyChallenges(uid);
     }
   }
 
@@ -461,8 +469,13 @@ async function route(method: string, url: string, body: any): Promise<any> {
     if (cleanUrl === "/api/onboarding/finalize") return callFinalizeOnboarding(uid, body);
     if (cleanUrl === "/api/quests") return createQuest(uid, body);
     if (cleanUrl === "/api/rewards") return createReward(uid, body);
-    if (cleanUrl === "/api/coach") return callCoach(body?.message ?? "");
+    if (cleanUrl === "/api/coach") {
+      return callCoach(body?.message ?? "", body?.personalizationHint);
+    }
     if (cleanUrl === "/api/daily-pack") return callGenerateQuests(uid, !!body?.refresh);
+    if (cleanUrl === "/api/weekly-challenges/claim") {
+      return claimWeeklyChallengeReward(uid, String(body?.challengeKey ?? ""));
+    }
     // /api/quests/:id/complete
     const completeMatch = cleanUrl.match(/^\/api\/quests\/([^/]+)\/complete$/);
     if (completeMatch) return callCompleteQuest(uid, completeMatch[1]);

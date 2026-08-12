@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Flame, RefreshCw, Loader2, Sparkles } from "lucide-react";
 import { useGame } from "@/lib/game";
@@ -16,21 +18,77 @@ import { splitQuestsByCompletion, computeDailyProgress } from "@/lib/questUtils"
 import { getWeakestCategory, getTodaysMission, getTodaysFocus } from "@/lib/dashboardUtils";
 import { TodaysMissionCard } from "@/components/dashboard/TodaysMission";
 import { TodaysFocusCard } from "@/components/dashboard/TodaysFocus";
+import { MoreToDoStrip } from "@/components/dashboard/MoreToDoStrip";
 import { ContinueJourney } from "@/components/dashboard/ContinueJourney";
+import { WeeklyChallengesCard } from "@/components/dashboard/WeeklyChallengesCard";
+import { StreakStatusStrip } from "@/components/dashboard/StreakStatusStrip";
+import { QUEST_CATALOG } from "@/lib/questCatalog";
+import { SoftPersonalizePrompt } from "@/components/dashboard/SoftPersonalizePrompt";
+import { RecommendedNextActionCard } from "@/components/dashboard/RecommendedNextActionCard";
+import { WeeklyClaimChip } from "@/components/dashboard/WeeklyClaimChip";
+import { LocalReminderNudge } from "@/components/dashboard/LocalReminderNudge";
+import { SocialHomeCard } from "@/components/SocialHomeCard";
+import { PushOptInCard } from "@/components/PushOptInCard";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { scrollToDeepLinkFocus } from "@/lib/notificationDeepLinks";
+import { readPersonalization } from "@/lib/personalization/store";
+import {
+  DEFAULT_PERSONALIZATION,
+  shouldShowSoftPersonalizePrompt,
+  type PersonalizationPrefs,
+} from "@/lib/personalization/types";
+import { pickRecommendedNextAction } from "@/lib/personalization/nextAction";
+import { getStreakStatus } from "@/lib/streak";
+import { getCareerPath } from "@/lib/careerPaths";
+import { listGoals } from "@/lib/personalization/goals";
+import { primaryGoalLabel, rankAll, scoreQuest } from "@/lib/personalization/engine";
+import { getCertificationById } from "@/lib/certifications";
+import { getSideHustleById } from "@/lib/sideHustles";
+import { readCertProgress, readHustleProgress } from "@/lib/personalization/guideProgress";
+import type { WeeklyChallengeState } from "@/lib/weeklyChallenges";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
 type DailyPack = { quests: Quest[]; cached?: boolean; allComplete?: boolean };
 
 export default function Dashboard() {
-  const { character, completeQuest, isCompleting } = useGame();
+  const { character, completeQuest, completingQuestId } = useGame();
   const { me } = useAuth();
+  const [loc] = useLocation();
   const qc = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
+  const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
+  const [hasOpenGoals, setHasOpenGoals] = useState(false);
+  const [activeCertId, setActiveCertId] = useState<string | null>(null);
+  const [activeHustleId, setActiveHustleId] = useState<string | null>(null);
 
   const { data: pack, isLoading: packLoading } = useQuery<DailyPack>({
     queryKey: ["/api/daily-pack"],
   });
+  const { data: weekly } = useQuery<WeeklyChallengeState>({
+    queryKey: ["/api/weekly-challenges"],
+  });
+
+  useEffect(() => {
+    scrollToDeepLinkFocus(loc);
+  }, [loc]);
+
+  useEffect(() => {
+    if (!me?.id) return;
+    const uid = String(me.id);
+    void readPersonalization(uid).then(setPrefs);
+    void listGoals(uid).then((g) => setHasOpenGoals(g.some((x) => x.status === "active")));
+    void readCertProgress(uid).then((p) => {
+      const id = p.started.find((x) => !p.completed.includes(x)) ?? null;
+      setActiveCertId(id);
+    });
+    void readHustleProgress(uid).then((p) => {
+      const id = p.started.find((x) => !p.completed.includes(x)) ?? null;
+      setActiveHustleId(id);
+    });
+  }, [me?.id]);
 
   const refreshMut = useMutation({
     mutationFn: async () => {
@@ -43,6 +101,14 @@ export default function Dashboard() {
     },
   });
 
+  const levels = useMemo(() => {
+    const out: Record<string, number> = { health: 2, wealth: 2, career: 2, family: 2, mindset: 2 };
+    for (const c of cats ?? []) {
+      if (c.key) out[c.key] = c.level ?? 1;
+    }
+    return out;
+  }, [cats]);
+
   if (!character) return <DashboardSkeleton />;
 
   const packQuests: Quest[] = (pack?.quests ?? []) as Quest[];
@@ -51,15 +117,68 @@ export default function Dashboard() {
   const weakest = getWeakestCategory(cats ?? []);
   const mission = getTodaysMission(packActive, pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0));
   const focus = getTodaysFocus(weakest, character);
+  const streak = getStreakStatus({
+    currentStreak: character.currentStreak,
+    longestStreak: character.longestStreak,
+    lastCompletionDate: character.lastCompletionDate,
+  });
+
+  const topQuest = prefs.personalizationCompleted
+    ? rankAll(QUEST_CATALOG, scoreQuest, { prefs, categoryLevels: levels }, 1)[0] ?? null
+    : null;
+
+  const activePath = prefs.activeCareerPathId ? getCareerPath(prefs.activeCareerPathId) : null;
+  const activeCert = activeCertId ? getCertificationById(activeCertId) : null;
+  const activeHustle = activeHustleId ? getSideHustleById(activeHustleId) : null;
+  const weeklyClaimable = (weekly?.challenges ?? []).filter((c) => c.completed && !c.rewardClaimed).length;
+  const showSoftPrompt = shouldShowSoftPersonalizePrompt(prefs);
+  const dailyCleared = !!(pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0));
+
+  async function requestComplete(q: Quest) {
+    if (q.difficulty === "hard") {
+      const ok = await confirm({
+        title: "Complete hard quest?",
+        description: `"${q.title}" awards +${q.xpReward} XP. You can only complete it once today.`,
+        confirmLabel: "Mark complete",
+      });
+      if (!ok) return;
+    }
+    completeQuest(q);
+  }
+
+  const nextAction = pickRecommendedNextAction({
+    prefs,
+    dailyIncomplete: packProgress.remaining,
+    dailyTotal: packProgress.total,
+    weeklyClaimable,
+    streakBroken: streak.broken && (character.currentStreak ?? 0) === 0 && !!character.lastCompletionDate,
+    topQuest,
+    activeCareerPathId: activePath?.id ?? null,
+    careerPathTitle: activePath?.title ?? null,
+    activeCertId: activeCert?.id ?? null,
+    activeCertTitle: activeCert?.name ?? null,
+    activeHustleId: activeHustle?.id ?? null,
+    activeHustleTitle: activeHustle?.name ?? null,
+    hasOpenGoals,
+  });
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       {me?.id && <WelcomeDialog userId={String(me.id)} />}
+
+      {me?.id && (
+        <SoftPersonalizePrompt
+          uid={String(me.id)}
+          prefs={prefs}
+          onDismissed={setPrefs}
+        />
+      )}
 
       {/* 1. Hero / Level card */}
       <motion.section
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-        className="surface rounded-2xl p-5 emerald-glow"
+        className={`surface rounded-2xl p-5 emerald-glow ${streak.atRisk ? "border border-accent/40" : ""}`}
         data-testid="card-hero"
       >
         <div className="flex items-center gap-4">
@@ -75,6 +194,11 @@ export default function Dashboard() {
               <span className="font-num text-3xl font-extrabold gold-text leading-none" data-testid="text-level">{character.level}</span>
             </div>
             {character.title && <div className="text-[11px] text-accent mt-0.5" data-testid="text-title">{character.title}</div>}
+            {prefs.primaryGoal && (
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Focus: {primaryGoalLabel(prefs.primaryGoal)}
+              </div>
+            )}
           </div>
           <div className="text-right">
             <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Streak</div>
@@ -89,24 +213,63 @@ export default function Dashboard() {
         </div>
         <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
           <span>Total: <span className="text-foreground font-num">{character.totalXp.toLocaleString()}</span> XP</span>
-          <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
+          {LAUNCH_FLAGS.rewardsShopEnabled ? (
+            <span>Spendable: <span className="gold-text font-num font-semibold">{character.spendableXp.toLocaleString()}</span></span>
+          ) : null}
         </div>
+        <StreakStatusStrip
+          currentStreak={character.currentStreak}
+          longestStreak={character.longestStreak}
+          lastCompletionDate={character.lastCompletionDate}
+        />
       </motion.section>
 
-      {/* 2. Today's Mission */}
+      <WeeklyClaimChip count={weeklyClaimable} />
+
+      {/* Soft prompt owns personalize; claim chip owns weekly; mission card owns daily finish */}
+      {!showSoftPrompt &&
+        nextAction.kind !== "claim_weekly" &&
+        !(mission.quest && nextAction.kind === "finish_daily_quests") && (
+          <RecommendedNextActionCard action={nextAction} />
+        )}
+
+      {/* 2. Today's Mission (focus copy folded into subtitle when present) */}
       <TodaysMissionCard
-        mission={mission}
-        onStart={mission.quest ? () => completeQuest(mission.quest!) : undefined}
-        isCompleting={isCompleting}
+        mission={{
+          ...mission,
+          subtitle: mission.quest
+            ? mission.subtitle
+            : focus.body
+              ? `${mission.subtitle} · ${focus.title}`
+              : mission.subtitle,
+        }}
+        onStart={mission.quest ? () => void requestComplete(mission.quest!) : undefined}
+        isCompleting={
+          !!mission.quest && completingQuestId === String(mission.quest.id)
+        }
       />
 
-      {/* 3. Today's Focus */}
-      <TodaysFocusCard title={focus.title} body={focus.body} />
+      {/* Focus only when there's no active mission card quest (avoid duplicate guidance) */}
+      {!mission.quest && <TodaysFocusCard title={focus.title} body={focus.body} />}
+
+      {activePath && (
+        <Link
+          href={`/career-paths/${activePath.id}`}
+          className="block surface rounded-xl px-4 py-3 hover-elevate"
+          data-testid="card-current-path"
+        >
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Current path</div>
+          <div className="font-semibold mt-0.5">{activePath.title}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{activePath.typicalDirection}</div>
+        </Link>
+      )}
 
       {/* Daily pack: progress + active + completed */}
-      <section className="space-y-3" data-testid="section-todays-quests">
+      <section className="space-y-3" id="daily-quests" data-testid="section-todays-quests">
         <div className="flex items-baseline justify-between px-0.5">
-          <h2 className="text-base font-bold tracking-tight">Daily Missions</h2>
+          <h2 className="text-base font-bold tracking-tight">
+            {prefs.personalizationCompleted ? "Today’s Personalized Quests" : "Daily Missions"}
+          </h2>
           <button
             onClick={() => refreshMut.mutate()}
             disabled={refreshMut.isPending || pack?.allComplete}
@@ -135,20 +298,53 @@ export default function Dashboard() {
         ) : packQuests.length === 0 ? (
           <div className="surface rounded-xl p-6 text-center">
             <Sparkles className="w-7 h-7 text-accent mx-auto mb-2" />
-            <div className="font-semibold">Your daily pack is being prepared</div>
-            <div className="text-sm text-muted-foreground mt-1">Tap Refresh to generate today&apos;s quests.</div>
+            <div className="font-semibold">Ready for today&apos;s missions</div>
+            <div className="text-sm text-muted-foreground mt-1">
+              Three focused quests from the catalog, weighted toward your goals and weakest skills.
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshMut.mutate()}
+              disabled={refreshMut.isPending}
+              className="mt-3 text-sm text-primary hover-elevate rounded-lg px-3 py-1.5"
+              data-testid="button-generate-pack"
+            >
+              Generate today&apos;s pack
+            </button>
           </div>
+        ) : pack?.allComplete || (packProgress.total > 0 && packProgress.remaining === 0) ? (
+          <>
+            <div className="surface rounded-xl p-4 border border-accent/30" data-testid="banner-daily-clear">
+              <div className="font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent" />
+                Daily missions clear
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                Legendary work. Come back tomorrow for a fresh catalog pack — or tackle a side quest below.
+              </div>
+            </div>
+            <QuestSection
+              title="Completed Today"
+              count={packCompleted.length}
+              collapsible
+              data-testid="section-pack-completed"
+            >
+              {packCompleted.map((q) => (
+                <QuestRow
+                  key={q.id}
+                  quest={q}
+                  variant="completed"
+                />
+              ))}
+            </QuestSection>
+          </>
         ) : (
           <>
             {/* 5. Active Quests */}
             <QuestSection
               title="Active Quests"
               count={packActive.length}
-              emptyMessage={
-                pack?.allComplete || packProgress.remaining === 0
-                  ? "All missions complete — legendary work today."
-                  : "All daily quests cleared."
-              }
+              emptyMessage="All daily quests cleared."
               data-testid="section-pack-active"
             >
               {packActive.map((q) => (
@@ -156,9 +352,8 @@ export default function Dashboard() {
                   key={q.id}
                   quest={q}
                   variant="active"
-                  onComplete={() => completeQuest(q)}
-                  isCompleting={isCompleting}
-                  interactive
+                  onComplete={() => void requestComplete(q)}
+                  isCompleting={completingQuestId === String(q.id)}
                 />
               ))}
             </QuestSection>
@@ -175,14 +370,29 @@ export default function Dashboard() {
                   key={q.id}
                   quest={q}
                   variant="completed"
-                  onCompleteAgain={!q.isDaily ? () => completeQuest(q) : undefined}
-                  isCompleting={isCompleting}
                 />
               ))}
             </QuestSection>
           </>
         )}
       </section>
+
+      {/* Weekly challenges */}
+      <div id="weekly-challenges">
+        <WeeklyChallengesCard />
+      </div>
+
+      {/* At most one social growth card — gated until social CF deploy */}
+      {me?.id && LAUNCH_FLAGS.socialHomeCardEnabled ? (
+        <SocialHomeCard uid={String(me.id)} />
+      ) : null}
+
+      {LAUNCH_FLAGS.remotePushEnabled ? <PushOptInCard /> : null}
+
+      <LocalReminderNudge dailyCleared={dailyCleared} />
+
+      {/* More to do */}
+      <MoreToDoStrip />
 
       {/* 7. Continue Journey */}
       <ContinueJourney />

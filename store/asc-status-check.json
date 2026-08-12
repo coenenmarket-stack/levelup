@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-07-28T00:35:00Z",
+  "appId": "6792917459",
+  "bundleId": "com.coenenmarket.leveluplife",
+  "marketingVersionIosProject": "1.0.1",
+  "ascVersion": {
+    "id": "58b99e5a-35e0-4151-a1b7-a6aafd364a84",
+    "versionString": "1.0.1",
+    "state": "PREPARE_FOR_SUBMISSION"
+  },
+  "attachedBuild": {
+    "id": "cd303c4d-640e-4818-a948-c40d58022a6c",
+    "buildNumber": "2",
+    "audience": "APP_STORE_ELIGIBLE",
+    "preReleaseVersion": "1.0.1",
+    "usesNonExemptEncryption": false,
+    "note": "Build 3 exists but is INTERNAL_ONLY and cannot be attached"
+  },
+  "urls": {
+    "privacy": "https://level-up-life-73702.web.app/privacy.html",
+    "support": "https://level-up-life-73702.web.app/support.html",
+    "marketing": "https://level-up-life-73702.web.app",
+    "privacyLive": true,
+    "supportLive": true
+  },
+  "screenshots": {
+    "displayType": "APP_IPHONE_67",
+    "setId": "4581738a-fc45-4d89-8d45-86824365c324",
+    "state": "COMPLETE",
+    "files": ["01-hero.png", "02-quests.png", "03-progress.png"]
+  },
+  "pricing": {
+    "priceScheduleId": "6792917459",
+    "freeUsaPricePointApplied": true
+  },
+  "privacyQuestionnaire": {
+    "apiStatus": "UNAVAILABLE",
+    "iris": "401 No valid credentials (API key cannot use iris web API)",
+    "publicApi": "404 dataUsages relationship does not exist",
+    "blocker": true,
+    "manualRequired": true,
+    "sourceOfTruth": "store/app_privacy_details.json"
+  },
+  "submitForReview": {
+    "submitted": false,
+    "reviewSubmissionCreated": "57f6c9ba-b851-4dd5-9a16-c03319fa7e46",
+    "linkVersionError": "STATE_ERROR.ENTITY_STATE_INVALID — version not reviewable (App Privacy incomplete)",
+    "ascUi": "https://appstoreconnect.apple.com/apps/6792917459/distribution/ios/version/inflight"
+  }
+}

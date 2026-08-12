@@ -9,10 +9,17 @@
 // own game.
 
 import {
-  doc, collection, getDoc, getDocs, addDoc, updateDoc, writeBatch,
-  query, where, limit,
+  doc, collection, getDoc, getDocs, addDoc, updateDoc, writeBatch, setDoc,
+  query, where, limit, runTransaction,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { candidateDayKeys, dayKeyLocal, isCompletionToday } from "./dayKey";
+import { nextStreakState, streakXpMultiplier } from "./streak";
+import { syncWeeklyChallengeProgress } from "./weeklyChallenges";
+import {
+  evaluateAchievements,
+  seedAchievementsOnOnboarding,
+} from "./achievements";
 
 // ============================================================================
 // Game constants (mirrors of functions/src/index.ts)
@@ -182,30 +189,6 @@ const CLASS_QUEST_TEMPLATES: Record<string, Array<any>> = {
   ],
 };
 
-const ACHIEVEMENT_TEMPLATES = [
-  { key: "first-quest", name: "First Step", description: "Complete your first quest", icon: "🌱", rarity: "common", category: null, target: 1 },
-  { key: "10-quests", name: "Getting Started", description: "Complete 10 quests", icon: "⭐", rarity: "common", category: null, target: 10 },
-  { key: "100-quests", name: "Centurion", description: "Complete 100 quests", icon: "💯", rarity: "rare", category: null, target: 100 },
-  { key: "streak-7", name: "7 Day Streak", description: "Stay consistent for a week", icon: "🔥", rarity: "common", category: null, target: 7 },
-  { key: "streak-30", name: "30 Day Streak", description: "A month of dedication", icon: "🔥", rarity: "rare", category: null, target: 30 },
-  { key: "streak-100", name: "100 Day Streak", description: "Unbreakable habits", icon: "🔥", rarity: "legendary", category: null, target: 100 },
-  { key: "first-workout", name: "First Workout", description: "Complete your first health quest", icon: "💪", rarity: "common", category: "health", target: 1 },
-  { key: "10-workouts", name: "Gym Rat", description: "Complete 10 health quests", icon: "🏋️", rarity: "rare", category: "health", target: 10 },
-  { key: "100-workouts", name: "Iron Will", description: "Complete 100 health quests", icon: "🥇", rarity: "epic", category: "health", target: 100 },
-  { key: "save-100", name: "Save First $100", description: "Complete 4 finance quests", icon: "💵", rarity: "common", category: "finance", target: 4 },
-  { key: "save-1000", name: "Save First $1,000", description: "Complete 20 finance quests", icon: "💰", rarity: "rare", category: "finance", target: 20 },
-  { key: "debt-crusher", name: "Debt Crusher", description: "Complete 50 finance quests", icon: "⚒️", rarity: "epic", category: "finance", target: 50 },
-  { key: "first-cert", name: "Complete Certification", description: "Complete a hard career quest", icon: "🎓", rarity: "rare", category: "career", target: 1 },
-  { key: "first-promo", name: "First Promotion", description: "Complete 25 career quests", icon: "📈", rarity: "epic", category: "career", target: 25 },
-  { key: "family-bonded", name: "Family Bonded", description: "Complete 25 family quests", icon: "❤️", rarity: "epic", category: "family", target: 25 },
-  { key: "scholar", name: "Scholar", description: "Complete 50 learning quests", icon: "📚", rarity: "epic", category: "learning", target: 50 },
-  { key: "side-success", name: "Side Hustle Success", description: "Complete 25 side hustle quests", icon: "🚀", rarity: "epic", category: "hustle", target: 25 },
-  { key: "level-5", name: "Rising Hero", description: "Reach level 5", icon: "🆙", rarity: "common", category: null, target: 5 },
-  { key: "level-10", name: "Seasoned Adventurer", description: "Reach level 10", icon: "⚔️", rarity: "rare", category: null, target: 10 },
-  { key: "level-25", name: "Champion", description: "Reach level 25", icon: "👑", rarity: "epic", category: null, target: 25 },
-  { key: "level-50", name: "Legend", description: "Reach level 50", icon: "🏆", rarity: "legendary", category: null, target: 50 },
-];
-
 const STARTER_REWARDS = [
   { name: "Favorite Coffee", description: "Treat yourself to that good brew", icon: "☕", cost: 100 },
   { name: "Movie Night", description: "Pick a film, get the snacks", icon: "🎬", cost: 500 },
@@ -228,7 +211,7 @@ const CATEGORY_STAT_IMPACT: Record<string, string[]> = {
   hustle: ["wealth", "intelligence"],
 };
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => dayKeyLocal();
 const nowISO = () => new Date().toISOString();
 
 // ============================================================================
@@ -364,17 +347,8 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
     await addDoc(collection(charRef, "quests"), { ...q, active: true, createdAt: nowISO() });
   }
 
-  // Seed achievements
-  const aBatch = writeBatch(db);
-  for (const a of ACHIEVEMENT_TEMPLATES) {
-    const ref = doc(collection(charRef, "achievements"), a.key);
-    aBatch.set(ref, {
-      key: a.key, name: a.name, description: a.description,
-      icon: a.icon, rarity: a.rarity, category: a.category,
-      unlocked: false, unlockedAt: null, progress: 0, target: a.target,
-    });
-  }
-  await aBatch.commit();
+  // Seed achievements (Phase 2 expanded catalog)
+  await seedAchievementsOnOnboarding(uid);
 
   // Seed rewards
   for (const r of STARTER_REWARDS) {
@@ -395,6 +369,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const charRef = doc(db, "characters", uid);
   const questRef = doc(charRef, "quests", questId);
   const today = todayISO();
+  const dayKeys = candidateDayKeys();
 
   const [questSnap, charSnap] = await Promise.all([getDoc(questRef), getDoc(charRef)]);
   if (!questSnap.exists()) throw new Error("Quest not found");
@@ -403,18 +378,22 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const quest: any = questSnap.data();
   const char: any = charSnap.data();
 
-  if (quest.isDaily) {
+  // Block same-day re-completion (local today + legacy UTC today when they differ).
+  for (const day of dayKeys) {
     const dup = await getDocs(query(
       collection(charRef, "completions"),
       where("questId", "==", questId),
-      where("completionDate", "==", today),
+      where("completionDate", "==", day),
       limit(1),
     ));
     if (!dup.empty) throw new Error("Already completed today");
+
+    const legacyRef = doc(charRef, "completions", `${questId}_${day}`);
+    const legacySnap = await getDoc(legacyRef);
+    if (legacySnap.exists()) throw new Error("Already completed today");
   }
 
-  // Append completion
-  await addDoc(collection(charRef, "completions"), {
+  const completionPayload = {
     questId,
     questTitle: quest.title,
     category: quest.category,
@@ -422,11 +401,53 @@ export async function completeQuestLocal(uid: string, questId: string) {
     xpReward: quest.xpReward,
     completedAt: nowISO(),
     completionDate: today,
-  });
+  };
+  const completionRef = doc(charRef, "completions", `${questId}_${today}`);
+  try {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(completionRef);
+      if (existing.exists()) throw new Error("Already completed today");
+      // Also lock against legacy UTC doc colliding in the same transaction window
+      for (const day of dayKeys) {
+        if (day === today) continue;
+        const other = await tx.get(doc(charRef, "completions", `${questId}_${day}`));
+        if (other.exists()) throw new Error("Already completed today");
+      }
+      tx.set(completionRef, completionPayload);
+    });
+  } catch (e: any) {
+    if (String(e?.message || e).includes("Already completed today")) throw e;
+    const existing = await getDoc(completionRef);
+    if (existing.exists()) throw new Error("Already completed today");
+    await setDoc(completionRef, completionPayload);
+  }
+
+  // Streak — local day; one calendar day counts once (compat with legacy UTC lastCompletionDate)
+  const last = char.lastCompletionDate ?? null;
+  let currentStreak = char.currentStreak ?? 0;
+  let longestStreak = char.longestStreak ?? 0;
+  if (isCompletionToday(last)) {
+    // Already completed something earlier today — streak unchanged
+  } else {
+    const next = nextStreakState({
+      currentStreak,
+      longestStreak,
+      lastCompletionDate: last,
+      today,
+    });
+    currentStreak = next.currentStreak;
+    longestStreak = next.longestStreak;
+  }
+
+  // Streak XP multiplier: +5% per streak day, capped at +50% (shared helper)
+  const streakMult = streakXpMultiplier(currentStreak);
+  const baseXp = Number(quest.xpReward) || 0;
+  const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
+  const streakBonusXp = awardedXp - baseXp;
 
   // XP + level
   const oldLevel = char.level ?? 1;
-  let xp = (char.xp ?? 0) + quest.xpReward;
+  let xp = (char.xp ?? 0) + awardedXp;
   let level = oldLevel;
   let leveledUp = false;
   while (xp >= XP_TO_NEXT_LEVEL(level)) {
@@ -435,21 +456,6 @@ export async function completeQuestLocal(uid: string, questId: string) {
     leveledUp = true;
   }
 
-  // Streak
-  const last = char.lastCompletionDate;
-  let currentStreak = char.currentStreak ?? 0;
-  if (last !== today) {
-    if (last) {
-      const diff = Math.round((new Date(today).getTime() - new Date(last).getTime()) / 86_400_000);
-      if (diff === 1) currentStreak += 1;
-      else if (diff > 1) currentStreak = 1;
-      else currentStreak = Math.max(currentStreak, 1);
-    } else {
-      currentStreak = 1;
-    }
-  }
-  const longestStreak = Math.max(char.longestStreak ?? 0, currentStreak);
-
   // Stat bumps
   const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
   const statBump = quest.difficulty === "hard" ? 2 : quest.difficulty === "medium" ? 1 : 0;
@@ -457,8 +463,8 @@ export async function completeQuestLocal(uid: string, questId: string) {
     xp,
     level,
     title: titleForLevel(level),
-    totalXp: (char.totalXp ?? 0) + quest.xpReward,
-    spendableXp: (char.spendableXp ?? 0) + quest.xpReward,
+    totalXp: (char.totalXp ?? 0) + awardedXp,
+    spendableXp: (char.spendableXp ?? 0) + awardedXp,
     currentStreak,
     longestStreak,
     lastCompletionDate: today,
@@ -474,7 +480,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
   let questCategoryLevel: number | null = null;
   if (catSnap.exists()) {
     const cat: any = catSnap.data();
-    let newXp = (cat.xp ?? 0) + quest.xpReward;
+    let newXp = (cat.xp ?? 0) + awardedXp;
     let newLevel = cat.level ?? 1;
     while (newXp >= XP_TO_NEXT_LEVEL(newLevel)) {
       newXp -= XP_TO_NEXT_LEVEL(newLevel);
@@ -499,66 +505,49 @@ export async function completeQuestLocal(uid: string, questId: string) {
   updates.legacyScore = totalLevel; // now 5..495 (sum of all 5 skill levels)
   await updateDoc(charRef, updates);
 
-  // Update achievements
-  const [compsSnap, achsSnap] = await Promise.all([
-    getDocs(collection(charRef, "completions")),
-    getDocs(collection(charRef, "achievements")),
-  ]);
-  const allComps = compsSnap.docs.map(d => d.data() as any);
-  const newChar = { ...char, ...updates };
-
-  const newlyUnlocked: any[] = [];
-  const aBatch = writeBatch(db);
-  for (const aDoc of achsSnap.docs) {
-    const a: any = aDoc.data();
-    let progress = a.progress ?? 0;
-    if (a.key === "first-quest" || a.key === "10-quests" || a.key === "100-quests") {
-      progress = allComps.length;
-    } else if (a.key === "streak-7" || a.key === "streak-30" || a.key === "streak-100") {
-      progress = newChar.longestStreak;
-    } else if (a.key === "level-5" || a.key === "level-10" || a.key === "level-25" || a.key === "level-50") {
-      progress = newChar.level;
-    } else if (a.key === "first-workout" || a.key === "10-workouts" || a.key === "100-workouts") {
-      progress = allComps.filter(c => c.category === "health").length;
-    } else if (a.key === "save-100" || a.key === "save-1000" || a.key === "debt-crusher") {
-      progress = allComps.filter(c => c.category === "finance").length;
-    } else if (a.key === "first-cert") {
-      progress = allComps.filter(c => c.category === "career" && c.difficulty === "hard").length;
-    } else if (a.key === "first-promo") {
-      progress = allComps.filter(c => c.category === "career").length;
-    } else if (a.key === "family-bonded") {
-      progress = allComps.filter(c => c.category === "family").length;
-    } else if (a.key === "scholar") {
-      progress = allComps.filter(c => c.category === "learning").length;
-    } else if (a.key === "side-success") {
-      progress = allComps.filter(c => c.category === "hustle").length;
-    }
-    const shouldUnlock = !a.unlocked && progress >= (a.target ?? 1);
-    if (progress !== a.progress || shouldUnlock) {
-      aBatch.update(aDoc.ref, {
-        progress,
-        unlocked: shouldUnlock ? true : a.unlocked,
-        unlockedAt: shouldUnlock ? nowISO() : a.unlockedAt,
-      });
-      if (shouldUnlock) {
-        newlyUnlocked.push({ id: aDoc.id, ...a, progress, unlocked: true, unlockedAt: nowISO() });
-      }
-    }
-  }
-  await aBatch.commit();
-
   const updatedCharSnap = await getDoc(charRef);
   const updatedChar: any = { id: uid, userId: uid, ...updatedCharSnap.data() };
   updatedChar.xpToNext = XP_TO_NEXT_LEVEL(updatedChar.level);
   try { updatedChar.goals = JSON.parse(updatedChar.goalsJson || "[]"); } catch { updatedChar.goals = []; }
+
+  // Defer achievement + weekly sync so the UI unlocks immediately for the next quest.
+  // Failures here must never block further completions in the same session.
+  void (async () => {
+    try {
+      const [compsSnap, catsSnap2] = await Promise.all([
+        getDocs(collection(charRef, "completions")),
+        getDocs(collection(charRef, "categories")),
+      ]);
+      const allComps = compsSnap.docs.map(d => d.data() as any);
+      const categoryLevels: Record<string, number> = {};
+      catsSnap2.forEach((d) => {
+        const c: any = d.data();
+        if (c.key) categoryLevels[c.key] = c.level ?? 1;
+      });
+      if (questCategoryLevel != null) categoryLevels[quest.category] = questCategoryLevel;
+      await evaluateAchievements(uid, {
+        allComps,
+        character: { ...char, ...updates },
+        categoryLevels,
+      });
+    } catch (e) {
+      console.warn("deferred achievement eval failed", e);
+    }
+    try {
+      await syncWeeklyChallengeProgress(uid);
+    } catch (e) {
+      console.warn("deferred weekly sync failed", e);
+    }
+  })();
 
   return {
     character: updatedChar,
     leveledUp,
     oldLevel,
     newLevel: level,
-    xpEarned: quest.xpReward,
-    newlyUnlocked,
+    xpEarned: awardedXp,
+    streakBonusXp,
+    newlyUnlocked: [] as any[],
     xpToNext: XP_TO_NEXT_LEVEL(level),
   };
 }

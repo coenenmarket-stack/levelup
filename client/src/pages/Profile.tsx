@@ -9,6 +9,7 @@ import { XPBar } from "@/components/XPBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatDetailDialog } from "@/components/StatDetailDialog";
 import { CORE_STATS, type CoreStatInfo, type CoreStatKey } from "@/lib/statInfo";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
 const AVATAR_EMOJI: Record<string, string> = {
   warrior: "⚔️", mage: "🧙", ranger: "🏹", rogue: "🗡️",
@@ -85,11 +86,17 @@ export default function ProfilePage() {
         </div>
 
         {/* Top row stats */}
-        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+        <div
+          className={`mt-4 grid gap-2 text-center ${
+            LAUNCH_FLAGS.rewardsShopEnabled ? "grid-cols-4" : "grid-cols-3"
+          }`}
+        >
           <StatPill label="Level" value={character.level} gold />
           <StatPill label="Total XP" value={character.totalXp.toLocaleString()} icon={<Sparkles className="w-3 h-3 text-accent" />} />
           <StatPill label="Streak" value={character.currentStreak} icon={<Flame className={`w-3 h-3 text-accent ${character.currentStreak > 0 ? "animate-flame" : ""}`} />} />
-          <StatPill label="XP Pool" value={character.spendableXp.toLocaleString()} icon={<Coins className="w-3 h-3 text-accent" />} />
+          {LAUNCH_FLAGS.rewardsShopEnabled ? (
+            <StatPill label="XP Pool" value={character.spendableXp.toLocaleString()} icon={<Coins className="w-3 h-3 text-accent" />} />
+          ) : null}
         </div>
 
         {/* XP bar */}

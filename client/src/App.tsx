@@ -9,12 +9,12 @@ import { GameProvider } from "./lib/game";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { AppShell } from "./components/AppShell";
 import { InstallIosPrompt } from "./components/InstallIosPrompt";
+import { BackHandlerProvider } from "./lib/navigation/BackHandlerContext";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
 import Dashboard from "./pages/Dashboard";
 import Quests from "./pages/Quests";
-import Character from "./pages/Character";
 import Achievements from "./pages/Achievements";
 import Stats from "./pages/Stats";
 import Shop from "./pages/Shop";
@@ -27,6 +27,15 @@ import Support from "./pages/Support";
 import Mindset from "./pages/Mindset";
 import Certifications from "./pages/Certifications";
 import SideHustles from "./pages/SideHustles";
+import Friends from "./pages/Friends";
+import Invite from "./pages/Invite";
+import SocialHub from "./pages/SocialHub";
+import Leaderboard from "./pages/Leaderboard";
+import Notifications from "./pages/Notifications";
+import Personalize from "./pages/Personalize";
+import Explore from "./pages/Explore";
+import Goals from "./pages/Goals";
+import CareerPaths, { CareerPathDetailPage } from "./pages/CareerPaths";
 import NotFound from "@/pages/not-found";
 
 function FullScreenSpinner() {
@@ -35,6 +44,14 @@ function FullScreenSpinner() {
       <Loader2 className="w-7 h-7 text-primary animate-spin" />
     </div>
   );
+}
+
+function CharacterRedirect() {
+  const [, setLoc] = useLocation();
+  useEffect(() => {
+    setLoc("/profile");
+  }, [setLoc]);
+  return <FullScreenSpinner />;
 }
 
 function GatedApp() {
@@ -48,6 +65,79 @@ function GatedApp() {
     }
   }, [isLoading, me, loc, setLoc]);
 
+  // Native invite deep links → Friends page; reschedule notifications on resume
+  useEffect(() => {
+    if (!me?.onboarded) return;
+    let handle: { remove: () => Promise<void> } | null = null;
+    let resumeHandle: { remove: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const { App: CapApp } = await import("@capacitor/app");
+        const { parseInviteCodeFromUrl, isNativeApp } = await import("./lib/ios");
+        if (!isNativeApp()) return;
+        handle = await CapApp.addListener("appUrlOpen", ({ url }) => {
+          const code = parseInviteCodeFromUrl(url);
+          if (!code) return;
+          void import("./lib/featureFlags").then(({ LAUNCH_FLAGS }) => {
+            if (LAUNCH_FLAGS.friendsEnabled) {
+              setLoc(`/friends?code=${encodeURIComponent(code)}`);
+            } else {
+              setLoc("/");
+            }
+          });
+        });
+        resumeHandle = await CapApp.addListener("appStateChange", async ({ isActive }) => {
+          if (!isActive || !me) return;
+          try {
+            const { syncNotificationsForUser } = await import("./lib/notifications");
+            await syncNotificationsForUser({
+              prefs: {
+                notificationsEnabled: !!me.notificationsEnabled,
+                notifyDailyQuests: me.notifyDailyQuests !== false,
+                notifyStreakRisk: me.notifyStreakRisk !== false,
+                notifyWeeklyChallenges: me.notifyWeeklyChallenges !== false,
+              },
+            });
+            // Silent token refresh when already granted — no permission prompt
+            if (me.notificationsEnabled) {
+              const { LAUNCH_FLAGS } = await import("./lib/featureFlags");
+              if (LAUNCH_FLAGS.remotePushEnabled) {
+                const { refreshPushRegistrationIfGranted } = await import("./lib/pushNotifications");
+                await refreshPushRegistrationIfGranted(String(me.id));
+              }
+            }
+          } catch {
+            /* ignore — app must work without APNs/FCM */
+          }
+        });
+      } catch {
+        // web / unavailable
+      }
+    })();
+    return () => {
+      void handle?.remove();
+      void resumeHandle?.remove();
+    };
+  }, [me, setLoc]);
+
+  // One-shot silent push refresh after login (no prompt)
+  useEffect(() => {
+    if (!me?.onboarded || !me.notificationsEnabled) return;
+    void (async () => {
+      try {
+        const { LAUNCH_FLAGS } = await import("./lib/featureFlags");
+        if (!LAUNCH_FLAGS.remotePushEnabled) return;
+        const { refreshPushRegistrationIfGranted, setPushSessionUid } = await import(
+          "./lib/pushNotifications"
+        );
+        setPushSessionUid(String(me.id));
+        await refreshPushRegistrationIfGranted(String(me.id));
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [me?.id, me?.onboarded, me?.notificationsEnabled]);
+
   if (isLoading) return <FullScreenSpinner />;
 
   if (!me) return <AuthPage />;
@@ -60,7 +150,7 @@ function GatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/quests" component={Quests} />
-          <Route path="/character" component={Character} />
+          <Route path="/character" component={CharacterRedirect} />
           <Route path="/profile" component={Profile} />
           <Route path="/settings" component={Settings} />
           <Route path="/achievements" component={Achievements} />
@@ -71,6 +161,16 @@ function GatedApp() {
           <Route path="/mindset" component={Mindset} />
           <Route path="/certifications" component={Certifications} />
           <Route path="/side-hustles" component={SideHustles} />
+          <Route path="/friends" component={Friends} />
+          <Route path="/invite" component={Invite} />
+          <Route path="/social" component={SocialHub} />
+          <Route path="/leaderboard" component={Leaderboard} />
+          <Route path="/notifications" component={Notifications} />
+          <Route path="/personalize" component={Personalize} />
+          <Route path="/explore" component={Explore} />
+          <Route path="/goals" component={Goals} />
+          <Route path="/career-paths/:id" component={CareerPathDetailPage} />
+          <Route path="/career-paths" component={CareerPaths} />
           <Route component={NotFound} />
         </Switch>
       </AppShell>
@@ -86,7 +186,9 @@ function App() {
           <Toaster />
           <Router hook={useHashLocation}>
             <AuthProvider>
-              <GatedApp />
+              <BackHandlerProvider>
+                <GatedApp />
+              </BackHandlerProvider>
             </AuthProvider>
           </Router>
         </TooltipProvider>

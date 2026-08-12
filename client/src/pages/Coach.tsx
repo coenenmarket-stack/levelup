@@ -1,49 +1,136 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles, Send, Loader2, RefreshCw } from "lucide-react";
 import { useGame } from "@/lib/game";
+import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
+import { readPersonalization } from "@/lib/personalization/store";
+import { DEFAULT_PERSONALIZATION, type PersonalizationPrefs } from "@/lib/personalization/types";
+import { primaryGoalLabel } from "@/lib/personalization/engine";
+import {
+  formatCoachMemoryForPrompt,
+  readCoachMemory,
+  writeCoachMemory,
+  type CoachMemory,
+} from "@/lib/personalization/coachMemory";
+import {
+  clearCoachChatLocal,
+  readCoachChatLocal,
+  writeCoachChatLocal,
+} from "@/lib/personalization/coachChatLocal";
+import { buildCoachActionLinks, type CoachActionLink } from "@/lib/personalization/nextAction";
+import { getCareerPath } from "@/lib/careerPaths";
+import { FeatureUnavailable } from "@/components/FeatureUnavailable";
+import { LAUNCH_FLAGS } from "@/lib/featureFlags";
 
-type Msg = { role: "coach" | "you"; text: string; fallback?: boolean };
+type Msg = {
+  role: "coach" | "you";
+  text: string;
+  fallback?: boolean;
+  links?: CoachActionLink[];
+};
 
 const STARTER_PROMPTS = [
   "What should I focus on today?",
-  "Give me a quest for my Etsy shop",
+  "Help me stick to my career path",
   "I'm feeling stuck — pull me out of it",
   "How do I keep my streak alive when I'm tired?",
 ];
 
 export default function Coach() {
   const { character } = useGame();
+  const { me } = useAuth();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
+  const [memory, setMemory] = useState<CoachMemory | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const gated = !LAUNCH_FLAGS.aiCoachEnabled;
 
-  // Seed with a welcome message once we know the character name
   useEffect(() => {
-    if (character && messages.length === 0) {
-      setMessages([
-        {
-          role: "coach",
-          text: `Hey ${character.name}. I'm your AI coach — I know your level, streak, goals, skill trees, and today's quests. Ask me what to focus on, or how to level up your weakest category.`,
-        },
+    if (gated || !me?.id) return;
+    void (async () => {
+      const [p, m] = await Promise.all([
+        readPersonalization(String(me.id)),
+        readCoachMemory(String(me.id)),
       ]);
-    }
-  }, [character, messages.length]);
+      setPrefs(p);
+      setMemory(m);
+      const saved = readCoachChatLocal(String(me.id));
+      if (saved.length > 0) {
+        setMessages(saved.map((msg) => ({ role: msg.role, text: msg.text, fallback: msg.fallback })));
+      }
+      setHydrated(true);
+    })();
+  }, [me?.id, gated]);
 
-  // Auto-scroll to bottom on new message
+  const welcome = useMemo(() => {
+    if (!character) return "";
+    const focus = primaryGoalLabel(prefs.primaryGoal);
+    const path = prefs.activeCareerPathId ? getCareerPath(prefs.activeCareerPathId) : null;
+    const pathBit = path ? ` You’re on the ${path.title} path.` : "";
+    return `Hey ${character.name}. Your focus is ${focus}.${pathBit} I can see your streak, skills, and goals — ask what to do next. I recommend actions; I never award XP myself.`;
+  }, [character, prefs]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (character && messages.length === 0 && welcome) {
+      setMessages([{ role: "coach", text: welcome }]);
+    }
+  }, [character, messages.length, welcome, hydrated]);
+
+  useEffect(() => {
+    if (!me?.id || !hydrated || messages.length === 0) return;
+    writeCoachChatLocal(String(me.id), messages);
+  }, [messages, me?.id, hydrated]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  const actionLinks = useMemo(
+    () =>
+      buildCoachActionLinks({
+        pathId: prefs.activeCareerPathId,
+        questId: "daily",
+      }),
+    [prefs.activeCareerPathId],
+  );
+
   const sendMut = useMutation({
     mutationFn: async (message: string) => {
-      const res = await apiRequest("POST", "/api/coach", { message });
+      // Client-side context hint for CF (non-sensitive). CF also loads character.
+      const contextNote = [
+        prefs.primaryGoal ? `Primary goal: ${primaryGoalLabel(prefs.primaryGoal)}` : null,
+        prefs.secondaryGoals.length
+          ? `Secondary: ${prefs.secondaryGoals.map(primaryGoalLabel).join(", ")}`
+          : null,
+        prefs.activeCareerPathId ? `Active path: ${prefs.activeCareerPathId}` : null,
+        memory ? `Memory:\n${formatCoachMemoryForPrompt(memory)}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const res = await apiRequest("POST", "/api/coach", {
+        message,
+        personalizationHint: contextNote || undefined,
+      });
       return res.json() as Promise<{ reply: string; fallback?: boolean }>;
     },
     onSuccess: (data) => {
-      setMessages((prev) => [...prev, { role: "coach", text: data.reply, fallback: data.fallback }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "coach", text: data.reply, fallback: data.fallback, links: actionLinks.slice(0, 2) },
+      ]);
+      if (me?.id && !data.fallback) {
+        void writeCoachMemory(String(me.id), {
+          lastRecommendation: data.reply.slice(0, 280),
+          currentFocus: prefs.primaryGoal ? primaryGoalLabel(prefs.primaryGoal) : memory?.currentFocus ?? null,
+        }).then(setMemory);
+      }
     },
     onError: () => {
       setMessages((prev) => [
@@ -66,6 +153,7 @@ export default function Coach() {
   }
 
   function handleReset() {
+    if (me?.id) clearCoachChatLocal(String(me.id));
     setMessages(
       character
         ? [{ role: "coach", text: `Fresh slate, ${character.name}. What do you want to work on?` }]
@@ -75,9 +163,18 @@ export default function Coach() {
 
   const hasConversation = messages.filter((m) => m.role === "you").length > 0;
 
+  if (gated) {
+    return (
+      <FeatureUnavailable
+        title="AI Coach"
+        body="AI Coach is turned off for this build. Core quests and progression still work from Home."
+        testId="coach-unavailable"
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 200px)" }}>
-      {/* Header */}
+    <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 120px)" }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center gold-glow">
@@ -87,7 +184,7 @@ export default function Coach() {
             <h1 className="text-xl font-extrabold tracking-tight" data-testid="text-coach-title">
               AI Coach
             </h1>
-            <p className="text-xs text-muted-foreground">Personalized to your hero</p>
+            <p className="text-xs text-muted-foreground">Personalized to your plan — no XP from chat</p>
           </div>
         </div>
         {hasConversation && (
@@ -103,7 +200,17 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Conversation */}
+      {memory && (memory.coachingGoals.length > 0 || memory.activePlan) && (
+        <div className="surface rounded-xl px-3 py-2 mb-3 text-xs text-muted-foreground">
+          <div className="font-semibold text-foreground text-sm mb-0.5">Coach memory</div>
+          {memory.currentFocus && <div>Focus: {memory.currentFocus}</div>}
+          {memory.activePlan && <div>Plan: {memory.activePlan}</div>}
+          <Link href="/personalize" className="text-primary mt-1 inline-block">
+            Edit preferences
+          </Link>
+        </div>
+      )}
+
       <div
         ref={scrollerRef}
         className="flex-1 overflow-y-auto space-y-3 pb-4"
@@ -123,6 +230,19 @@ export default function Coach() {
               }`}
             >
               {m.text}
+              {m.links && m.links.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {m.links.map((l) => (
+                    <Link
+                      key={l.href + l.label}
+                      href={l.href}
+                      className="text-xs font-semibold text-primary underline"
+                    >
+                      {l.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -137,7 +257,6 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Starter prompts (only show before first user message) */}
       {!hasConversation && (
         <div className="mb-3 space-y-2" data-testid="starter-prompts">
           <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground px-1">
@@ -159,8 +278,7 @@ export default function Coach() {
         </div>
       )}
 
-      {/* Composer */}
-      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] surface-raised rounded-2xl p-2 flex items-end gap-2 border border-card-border">
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] surface-raised rounded-2xl p-2 flex items-end gap-2 border border-card-border">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

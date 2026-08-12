@@ -2,10 +2,15 @@
 export type Me = {
   id: number;
   email: string;
-  provider: "password" | "google" | "apple";
+  provider: "password" | "google" | "apple" | "facebook";
   emailVerified: boolean;
   onboarded: boolean;
   notificationsEnabled: boolean;
+  notifyDailyQuests: boolean;
+  notifyStreakRisk: boolean;
+  notifyWeeklyChallenges: boolean;
+  showLifeGoal: boolean;
+  facebookId?: string | null;
   createdAt: string;
 };
 
@@ -53,8 +58,8 @@ export type Category = {
 };
 
 export type Quest = {
-  id: number;
-  userId: number;
+  id: number | string;
+  userId?: number;
   title: string;
   description: string | null;
   category: string;
@@ -64,6 +69,9 @@ export type Quest = {
   active: boolean;
   createdAt: string;
   completedToday?: boolean;
+  catalogId?: string | null;
+  /** Optional how-to steps (from catalog when available). */
+  howto?: string | null;
 };
 
 export type Achievement = {
@@ -111,6 +119,7 @@ export type CompleteResult = {
   oldLevel: number;
   newLevel: number;
   xpEarned: number;
+  streakBonusXp?: number;
   newlyUnlocked: Achievement[];
   xpToNext: number;
 };

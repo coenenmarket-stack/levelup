@@ -1,7 +1,35 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Share2, Sparkles } from "lucide-react";
+import { shareText, inviteLinkForCode, ensureInviteCode } from "@/lib/friends";
 
-export function LevelUpOverlay({ open, level, onClose }: { open: boolean; level: number; onClose: () => void }) {
+export function LevelUpOverlay({
+  open,
+  level,
+  characterName,
+  streak,
+  onClose,
+}: {
+  open: boolean;
+  level: number;
+  characterName?: string;
+  streak?: number;
+  onClose: () => void;
+}) {
+  const shareProgress = async () => {
+    try {
+      let url: string | undefined;
+      try {
+        const { inviteCode } = await ensureInviteCode();
+        url = inviteLinkForCode(inviteCode);
+      } catch { /* ignore */ }
+      await shareText(
+        "Level Up!",
+        `${characterName || "I"} just reached level ${level} on Level Up Life${streak ? ` with a ${streak}-day streak` : ""}!`,
+        url,
+      );
+    } catch { /* cancelled */ }
+  };
+
   return (
     <AnimatePresence>
       {open && (
@@ -17,6 +45,7 @@ export function LevelUpOverlay({ open, level, onClose }: { open: boolean; level:
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
             className="surface-raised rounded-3xl px-8 py-10 text-center mx-6 emerald-glow"
             data-testid="overlay-level-up"
+            onClick={(e) => e.stopPropagation()}
           >
             <motion.div
               animate={{ rotate: [0, 8, -8, 0] }}
@@ -30,13 +59,23 @@ export function LevelUpOverlay({ open, level, onClose }: { open: boolean; level:
             <div className="mt-3 text-foreground/90 max-w-xs">
               You've reached level <span className="text-primary font-semibold">{level}</span>. The grind pays off.
             </div>
-            <button
-              onClick={onClose}
-              data-testid="button-close-level-up"
-              className="mt-6 px-5 py-2 rounded-full bg-primary text-primary-foreground font-semibold hover-elevate active-elevate"
-            >
-              Continue the journey
-            </button>
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                onClick={onClose}
+                data-testid="button-close-level-up"
+                className="px-5 py-2 rounded-full bg-primary text-primary-foreground font-semibold hover-elevate active-elevate"
+              >
+                Continue the journey
+              </button>
+              <button
+                type="button"
+                onClick={() => void shareProgress()}
+                data-testid="button-share-level-up"
+                className="px-5 py-2 rounded-full bg-secondary font-semibold hover-elevate flex items-center justify-center gap-2"
+              >
+                <Share2 className="w-4 h-4" /> Share progress
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

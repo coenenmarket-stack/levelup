@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in with Google — Level Up Life</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    p { color: #c9d1d9; max-width: 22rem; line-height: 1.5; }
+    .err { color: #ff7b72; }
+    button, a.btn {
+      display: inline-block;
+      margin: 0.5rem 0.35rem 0;
+      border: 0;
+      border-radius: 10px;
+      padding: 0.75rem 1.25rem;
+      font-weight: 700;
+      background: #e6edf3;
+      color: #0d1117;
+      text-decoration: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sign in with Google</h1>
+    <p id="status">Preparing Google sign-in…</p>
+    <button id="retry" hidden type="button">Try again</button>
+    <a id="openApp" class="btn" hidden href="#">Tap to return to the app</a>
+  </main>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult,
+    } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+    const CREATE_SESSION =
+      "https://us-central1-level-up-life-73702.cloudfunctions.net/createNativeGoogleSession";
+    const statusEl = document.getElementById("status");
+    const retryBtn = document.getElementById("retry");
+    const openApp = document.getElementById("openApp");
+
+    const app = initializeApp({
+      apiKey: "AIzaSyBRtjVakNyozHXP_lVKoDuINTumRYOl7i4",
+      authDomain: "level-up-life-73702.web.app",
+      projectId: "level-up-life-73702",
+      storageBucket: "level-up-life-73702.firebasestorage.app",
+      messagingSenderId: "901479824639",
+      appId: "1:901479824639:web:4948da9080d5aba934e0ca",
+    });
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
+    function showError(message) {
+      statusEl.textContent = message;
+      statusEl.classList.add("err");
+      retryBtn.hidden = false;
+    }
+
+    async function handoff(idToken, accessToken) {
+      statusEl.textContent = "Returning to Level Up Life…";
+      statusEl.classList.remove("err");
+      const res = await fetch(CREATE_SESSION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, accessToken: accessToken || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !(data.deepLink || data.redirect)) {
+        throw new Error(data.error || "Could not finish Google sign-in");
+      }
+      // Prefer HTTPS finish page (stays in SFSafariViewController) with a
+      // user-tappable deep link. Auto custom-scheme redirects often dismiss
+      // Safari View Controller without delivering appUrlOpen to the app.
+      const deepLink = data.deepLink || ("com.coenenmarket.leveluplife://google-auth?code=" + encodeURIComponent(data.code));
+      const finishPage = data.redirect
+        || ("https://level-up-life-73702.web.app/native-auth-finish.html?code=" + encodeURIComponent(data.code));
+      openApp.href = deepLink;
+      openApp.hidden = false;
+      openApp.textContent = "Tap to return to the app";
+      statusEl.textContent = "Almost done — opening return page…";
+      window.location.replace(finishPage);
+    }
+
+    async function run() {
+      statusEl.textContent = "Continue with Google…";
+      statusEl.classList.remove("err");
+      retryBtn.hidden = true;
+      openApp.hidden = true;
+      try {
+        const redirected = await getRedirectResult(auth);
+        if (redirected?.user) {
+          const cred = GoogleAuthProvider.credentialFromResult(redirected);
+          if (!cred?.idToken) throw new Error("Missing Google ID token");
+          await handoff(cred.idToken, cred.accessToken || undefined);
+          return;
+        }
+
+        try {
+          const result = await signInWithPopup(auth, provider);
+          const cred = GoogleAuthProvider.credentialFromResult(result);
+          if (!cred?.idToken) throw new Error("Missing Google ID token");
+          await handoff(cred.idToken, cred.accessToken || undefined);
+        } catch (popupErr) {
+          statusEl.textContent = "Redirecting to Google…";
+          await signInWithRedirect(auth, provider);
+        }
+      } catch (e) {
+        showError(e?.message || "Google sign-in failed");
+      }
+    }
+
+    retryBtn.addEventListener("click", () => void run());
+    void run();
+  </script>
+</body>
+</html>

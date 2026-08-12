@@ -29,7 +29,47 @@ export function isIOSSafari(): boolean {
   return isAppleDevice && isSafari && !isStandalonePwa();
 }
 
-/** Google sign-in popups fail on iOS Safari and in Capacitor WKWebView — use redirect. */
+/**
+ * In-app WebView Google OAuth is blocked (disallowed_useragent).
+ * - Native Capacitor: open system Safari via Browser plugin, then deep-link back.
+ * - Mobile Safari / PWA: Firebase redirect flow.
+ */
 export function shouldUseGoogleRedirect(): boolean {
-  return isIOS() || isNativeApp();
+  return !isNativeApp() && isIOS();
+}
+
+export function shouldUseNativeGoogleBrowser(): boolean {
+  return isNativeApp();
+}
+
+export const NATIVE_GOOGLE_AUTH_URL =
+  "https://level-up-life-73702.web.app/native-google-auth.html";
+
+export const NATIVE_GOOGLE_AUTH_CALLBACK_PREFIX =
+  "com.coenenmarket.leveluplife://google-auth";
+
+export const NATIVE_INVITE_CALLBACK_PREFIX =
+  "com.coenenmarket.leveluplife://invite";
+
+/** Callable that exchanges a short-lived bridge code for Google tokens. */
+export const CLAIM_NATIVE_GOOGLE_SESSION = "claimNativeGoogleSession";
+
+export function parseInviteCodeFromUrl(url: string): string | null {
+  try {
+    if (!url.startsWith(NATIVE_INVITE_CALLBACK_PREFIX) && !url.includes("friends")) {
+      // also accept https hosting links with hash
+      if (!url.includes("code=")) return null;
+    }
+    const normalized = url.replace("com.coenenmarket.leveluplife://invite", "https://invite.local/");
+    const u = new URL(normalized.includes("://") ? normalized : `https://x.local/${normalized}`);
+    const fromQuery = u.searchParams.get("code");
+    if (fromQuery) return fromQuery.trim().toUpperCase();
+    if (u.hash.includes("code=")) {
+      const hq = u.hash.includes("?") ? u.hash.split("?")[1] : u.hash.replace(/^#/, "");
+      return new URLSearchParams(hq).get("code")?.trim().toUpperCase() || null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }

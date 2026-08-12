@@ -20,3 +20,13 @@ data.db-journal
 
 *.log
 .DS_Store
+
+# Local ASC prep artifacts
+store/asc-launch-prep-log.json
+
+
+# Intermediate screenshot processing artifacts
+store/screenshots/_raw/
+store/screenshots/_crops/
+store/screenshots/_temp-inspect/
+

@@ -26,6 +26,14 @@ function AppleIcon({ className }: { className?: string }) {
   );
 }
 
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="#1877F2" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+    </svg>
+  );
+}
+
 function AuthShell({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -50,7 +58,7 @@ type Mode = "login" | "signup" | "forgot" | "reset" | "verify";
 
 export default function AuthPage() {
   const [, navigate] = useLocation();
-  const { login, signup, googleSignIn, forgotPassword, resetPassword, verifyEmail } = useAuth();
+  const { login, signup, googleSignIn, facebookSignIn, appleSignIn, forgotPassword, resetPassword, verifyEmail } = useAuth();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -95,6 +103,30 @@ export default function AuthPage() {
       navigate("/");
     } catch (err: any) {
       toast({ title: "Google sign-in failed", description: parseError(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFacebook = async () => {
+    setSubmitting(true);
+    try {
+      await facebookSignIn();
+      navigate("/");
+    } catch (err: any) {
+      toast({ title: "Facebook sign-in failed", description: parseError(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleApple = async () => {
+    setSubmitting(true);
+    try {
+      await appleSignIn();
+      navigate("/");
+    } catch (err: any) {
+      toast({ title: "Apple sign-in failed", description: parseError(err), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +179,31 @@ export default function AuthPage() {
   if (mode === "login") {
     return (
       <AuthShell
-        footer={<span>By continuing, you agree to the Terms & Privacy Policy.</span>}
+        footer={
+          <span>
+            By continuing, you agree to the{" "}
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/terms.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-terms"
+            >
+              Terms
+            </a>{" "}
+            &{" "}
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-privacy"
+            >
+              Privacy Policy
+            </a>
+            .
+          </span>
+        }
       >
         <div className="text-center space-y-1">
           <h1 className="text-2xl font-extrabold tracking-tight">Welcome back</h1>
@@ -160,10 +216,10 @@ export default function AuthPage() {
             <GoogleIcon className="w-5 h-5" />
             <span>Continue with Google</span>
           </button>
-          <button disabled className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 font-medium opacity-50 cursor-not-allowed" data-testid="button-apple">
+          <button onClick={handleApple} disabled={submitting} data-testid="button-apple"
+            className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 hover-elevate active-elevate font-medium disabled:opacity-50">
             <AppleIcon className="w-5 h-5" />
             <span>Continue with Apple</span>
-            <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">Soon</span>
           </button>
         </div>
 
@@ -176,8 +232,13 @@ export default function AuthPage() {
         <form onSubmit={handleLogin} className="space-y-3">
           <FieldEmail value={email} onChange={setEmail} />
           <FieldPassword value={password} onChange={setPassword} show={showPw} toggle={() => setShowPw(s => !s)} />
-          <div className="flex justify-end">
-            <button type="button" onClick={() => setMode("forgot")} className="text-xs text-primary hover:underline" data-testid="link-forgot">
+          <div className="flex justify-end -mr-1">
+            <button
+              type="button"
+              onClick={() => setMode("forgot")}
+              className="text-xs text-primary hover:underline px-2 py-2 min-h-11"
+              data-testid="link-forgot"
+            >
               Forgot password?
             </button>
           </div>
@@ -186,7 +247,12 @@ export default function AuthPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           New here?{" "}
-          <button onClick={() => setMode("signup")} className="text-primary font-semibold hover:underline" data-testid="link-signup">
+          <button
+            type="button"
+            onClick={() => setMode("signup")}
+            className="text-primary font-semibold hover:underline px-1 py-2 min-h-11 inline-flex items-center"
+            data-testid="link-signup"
+          >
             Create account
           </button>
         </p>
@@ -197,7 +263,33 @@ export default function AuthPage() {
   // ---- SIGNUP ----
   if (mode === "signup") {
     return (
-      <AuthShell footer={<span>By creating an account, you agree to the Terms & Privacy Policy.</span>}>
+      <AuthShell
+        footer={
+          <span>
+            By creating an account, you agree to the{" "}
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/terms.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-terms-signup"
+            >
+              Terms
+            </a>{" "}
+            &{" "}
+            <a
+              className="underline underline-offset-2 inline-flex items-center min-h-11 px-1"
+              href={`${typeof window !== "undefined" ? window.location.origin : ""}/privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              data-testid="link-privacy-signup"
+            >
+              Privacy Policy
+            </a>
+            .
+          </span>
+        }
+      >
         <button onClick={() => setMode("login")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" data-testid="link-back-login">
           <ChevronLeft className="w-3.5 h-3.5" /> Back
         </button>
@@ -212,10 +304,10 @@ export default function AuthPage() {
             <GoogleIcon className="w-5 h-5" />
             <span>Continue with Google</span>
           </button>
-          <button disabled className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 font-medium opacity-50 cursor-not-allowed">
+          <button onClick={handleApple} disabled={submitting} data-testid="button-apple-signup"
+            className="surface rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 hover-elevate active-elevate font-medium disabled:opacity-50">
             <AppleIcon className="w-5 h-5" />
             <span>Continue with Apple</span>
-            <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">Soon</span>
           </button>
         </div>
 
@@ -376,11 +468,29 @@ function PrimaryButton({ children, submitting, testId, onClick }: { children: Re
 }
 
 function parseError(err: any): string {
+  const code = String(err?.code ?? "");
+  if (code.includes("auth/wrong-password") || code.includes("auth/invalid-credential")) {
+    return "Email or password looks wrong.";
+  }
+  if (code.includes("auth/user-not-found")) return "No account found for that email.";
+  if (code.includes("auth/email-already-in-use")) return "That email already has an account.";
+  if (code.includes("auth/too-many-requests")) return "Too many attempts. Wait a minute and try again.";
+  if (code.includes("auth/network-request-failed")) return "Network issue. Check your connection and try again.";
+  if (code.includes("auth/popup-closed-by-user")) return "Sign-in was cancelled.";
+
   const msg = err?.message ?? "Something went wrong";
-  // err.message is typically "400: {json}"
   const m = String(msg).match(/^\d+:\s*(\{.*\})$/);
   if (m) {
-    try { return JSON.parse(m[1]).error ?? msg; } catch { /* ignore */ }
+    try {
+      const parsed = JSON.parse(m[1]).error ?? msg;
+      if (/firebase|firestore|functions\//i.test(String(parsed))) {
+        return "Something went wrong. Please try again.";
+      }
+      return parsed;
+    } catch { /* ignore */ }
+  }
+  if (/firebase|firestore|functions\/|stack|undefined|null is not/i.test(String(msg))) {
+    return "Something went wrong. Please try again.";
   }
   return msg;
 }
