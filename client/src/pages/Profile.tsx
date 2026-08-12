@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Flame, Trophy, Sparkles, Cog, Coins, Crown, Award } from "lucide-react";
+import { Flame, Trophy, Sparkles, Cog, Coins, Crown, Award, ChevronRight } from "lucide-react";
 import { useGame } from "@/lib/game";
-import type { Achievement, Stats } from "@/lib/types";
+import type { Achievement, Character, Stats } from "@/lib/types";
 import { XPBar } from "@/components/XPBar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatDetailDialog } from "@/components/StatDetailDialog";
+import { CORE_STATS, type CoreStatInfo, type CoreStatKey } from "@/lib/statInfo";
 
 const AVATAR_EMOJI: Record<string, string> = {
   warrior: "⚔️", mage: "🧙", ranger: "🏹", rogue: "🗡️",
@@ -16,21 +19,17 @@ const CLASS_EMOJI: Record<string, string> = {
   student: "📚", creator: "🎨", professional: "🧠",
 };
 
-const STATS = [
-  { key: "strength", label: "Strength", emoji: "💪", color: "#ef4444" },
-  { key: "intelligence", label: "Intelligence", emoji: "🧠", color: "#8b5cf6" },
-  { key: "discipline", label: "Discipline", emoji: "🎯", color: "#f59e0b" },
-  { key: "wealth", label: "Wealth", emoji: "💰", color: "#10b981" },
-  { key: "health", label: "Health", emoji: "❤️", color: "#ec4899" },
-  { key: "relationships", label: "Relationships", emoji: "🤝", color: "#3b82f6" },
-] as const;
-
 const RARITY_ORDER = ["legendary", "epic", "rare", "common"] as const;
+
+function statValue(character: Character, key: CoreStatKey): number {
+  return character[key] ?? 0;
+}
 
 export default function ProfilePage() {
   const { character } = useGame();
   const { data: achievements } = useQuery<Achievement[]>({ queryKey: ["/api/achievements"] });
   const { data: stats } = useQuery<Stats>({ queryKey: ["/api/stats"] });
+  const [selectedStat, setSelectedStat] = useState<CoreStatInfo | null>(null);
 
   if (!character) return <ProfileSkeleton />;
 
@@ -111,18 +110,33 @@ export default function ProfilePage() {
 
       {/* Core stats */}
       <section className="space-y-3">
-        <h2 className="text-base font-bold tracking-tight px-0.5">Core stats</h2>
+        <div className="px-0.5">
+          <h2 className="text-base font-bold tracking-tight">Core stats</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Tap a stat to learn what it means</p>
+        </div>
         <div className="grid grid-cols-1 gap-2.5">
-          {STATS.map(s => {
-            const value = (character as any)[s.key] as number;
+          {CORE_STATS.map(s => {
+            const value = statValue(character, s.key);
             return (
-              <div key={s.key} className="surface rounded-xl p-3" data-testid={`stat-${s.key}`}>
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSelectedStat(s)}
+                className="surface rounded-xl p-3 text-left w-full hover-elevate active-elevate"
+                data-testid={`stat-${s.key}`}
+                aria-label={`View details for ${s.label}`}
+              >
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span className="text-base">{s.emoji}</span>
                     <span className="text-sm font-semibold">{s.label}</span>
                   </div>
-                  <span className="font-num text-sm font-bold" style={{ color: s.color }}>{value}<span className="text-muted-foreground text-[10px]"> / 100</span></span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-num text-sm font-bold" style={{ color: s.color }}>
+                      {value}<span className="text-muted-foreground text-[10px]"> / 100</span>
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-secondary/50 overflow-hidden">
                   <motion.div
@@ -131,11 +145,18 @@ export default function ProfilePage() {
                     style={{ background: `linear-gradient(90deg, ${s.color}, ${s.color}aa)` }}
                   />
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </section>
+
+      <StatDetailDialog
+        stat={selectedStat}
+        value={selectedStat ? statValue(character, selectedStat.key) : 0}
+        open={!!selectedStat}
+        onOpenChange={(open) => { if (!open) setSelectedStat(null); }}
+      />
 
       {/* Quick stats */}
       <section className="grid grid-cols-3 gap-2">

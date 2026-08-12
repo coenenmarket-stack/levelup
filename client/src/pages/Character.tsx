@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useGame } from "@/lib/game";
@@ -5,14 +6,19 @@ import type { Category } from "@/lib/types";
 import { XPBar } from "@/components/XPBar";
 import { Flame, Settings as SettingsIcon, ChevronRight } from "lucide-react";
 import { AVATAR_CLASSES } from "@shared/schema";
+import { SkillTreeDetailDialog } from "@/components/SkillTreeDetailDialog";
+import { SKILL_TREE_INFO } from "@/lib/statInfo";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
 const subSkills: Record<string, string[]> = {
   health: ["Exercise", "Steps", "Water intake", "Sleep"],
+  wealth: ["Budgeting", "Saving", "Debt payoff", "Investing"],
   career: ["Work tasks", "Certifications", "Training", "Promotions"],
-  finance: ["Budgeting", "Saving", "Debt payoff", "Investing"],
   family: ["Quality time", "Date nights", "Parenting goals"],
+  mindset: ["Reading", "Journaling", "Focus", "Resilience"],
+  // Legacy keys
+  finance: ["Budgeting", "Saving", "Debt payoff", "Investing"],
   learning: ["Reading", "Courses", "Podcasts", "Tutorials"],
   hustle: ["Product creation", "Sales", "Listings", "Marketing"],
 };
@@ -20,6 +26,7 @@ const subSkills: Record<string, string[]> = {
 export default function CharacterPage() {
   const { character } = useGame();
   const { data: cats } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
+  const [selected, setSelected] = useState<Category | null>(null);
 
   if (!character) return null;
 
@@ -57,10 +64,20 @@ export default function CharacterPage() {
 
       {/* Skill trees */}
       <section className="space-y-3">
-        <h2 className="text-base font-bold tracking-tight px-0.5">Skill trees</h2>
+        <div className="px-0.5">
+          <h2 className="text-base font-bold tracking-tight">Skill trees</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Tap a skill to see how it levels up your life</p>
+        </div>
         <div className="space-y-2.5">
           {(cats ?? []).map((c) => (
-            <div key={c.id} className="surface rounded-xl p-4" data-testid={`card-skill-${c.key}`}>
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelected(c)}
+              className="surface rounded-xl p-4 w-full text-left hover-elevate active-elevate"
+              data-testid={`card-skill-${c.key}`}
+              aria-label={`View details for ${c.name}`}
+            >
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl" style={{ background: `${c.color}22`, border: `1px solid ${c.color}55` }}>
                   {c.icon}
@@ -68,7 +85,10 @@ export default function CharacterPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span> · <span style={{ color: c.color }}>{c.rank}</span></div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span> · <span style={{ color: c.color }}>{c.rank}</span></div>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    </div>
                   </div>
                   <div className="mt-1.5"><XPBar value={c.xp} max={c.level * 100} showText={false} height="h-1.5" /></div>
                 </div>
@@ -78,10 +98,17 @@ export default function CharacterPage() {
                   <span key={s} className="text-[11px] px-2 py-0.5 rounded-full border border-card-border bg-secondary/40 text-muted-foreground">{s}</span>
                 ))}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>
+
+      <SkillTreeDetailDialog
+        category={selected}
+        info={selected ? SKILL_TREE_INFO[selected.key] ?? null : null}
+        open={!!selected}
+        onOpenChange={(open) => { if (!open) setSelected(null); }}
+      />
 
       <Link href="/settings" className="surface rounded-xl p-4 flex items-center gap-3 hover-elevate" data-testid="link-settings">
         <SettingsIcon className="w-4 h-4 text-muted-foreground" />
