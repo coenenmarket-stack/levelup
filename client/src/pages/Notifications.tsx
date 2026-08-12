@@ -115,8 +115,8 @@ export default function NotificationsPage() {
                 data-testid={`inbox-item-${n.id}`}
                 onClick={() => {
                   if (!n.read) markMut.mutate(n.id);
-                  const path = resolveDeepLinkPath(n.href) || n.href || "/";
-                  setLoc(path.startsWith("/") ? path.split("#")[0]! : "/");
+                  const path = resolveDeepLinkPath(n.href);
+                  setLoc(path);
                 }}
               >
                 <div className="flex items-start justify-between gap-2">

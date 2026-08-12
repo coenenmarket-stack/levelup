@@ -94,7 +94,7 @@ describe("notification prefs / quiet hours / rate limits", () => {
 
 describe("deep links", () => {
   it("maps retention types to safe routes", () => {
-    assert.equal(destinationToPath(destinationForNotificationType("weekly_reward")).startsWith("/"), true);
+    assert.equal(destinationToPath(destinationForNotificationType("weekly_reward")), "/?focus=weekly-challenges");
     assert.equal(destinationToPath(destinationForNotificationType("daily_reminder")), "/quests");
     assert.equal(destinationToPath(destinationForNotificationType("streak_risk")), "/quests");
   });
@@ -111,6 +111,11 @@ describe("deep links", () => {
     assert.equal(destinationToPath(destinationForNotificationType("friend_request")), "/");
     assert.equal(destinationToPath(destinationForNotificationType("party_invite")), "/");
     assert.equal(destinationToPath(destinationForNotificationType("referral_activated")), "/");
+  });
+
+  it("converts legacy hash weekly deep links to focus query", () => {
+    assert.equal(resolveDeepLinkPath("/#weekly-challenges"), "/?focus=weekly-challenges");
+    assert.equal(resolveDeepLinkPath({ route: "/", hash: "weekly-challenges" }), "/?focus=weekly-challenges");
   });
 });
 

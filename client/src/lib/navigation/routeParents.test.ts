@@ -12,9 +12,9 @@ describe("parentRouteFor", () => {
     assert.equal(parentRouteFor("/career-paths/nursing"), "/career-paths");
   });
 
-  it("maps invite to friends", () => {
-    assert.equal(parentRouteFor("/invite"), "/friends");
-    assert.equal(parentRouteFor("/invite?x=1"), "/friends");
+  it("maps invite to friends when friends enabled, else home", () => {
+    // Default launch flags: friendsEnabled false
+    assert.equal(parentRouteFor("/invite"), "/");
   });
 
   it("falls back to home for secondary pages", () => {

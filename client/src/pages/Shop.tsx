@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FeatureUnavailable } from "@/components/FeatureUnavailable";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 const REWARD_ICONS = ["☕", "🎬", "🛠️", "🏞️", "🍔", "🎮", "📚", "🎁", "💎", "🍷", "🛒", "✈️"];
 
@@ -23,6 +24,7 @@ export default function Shop() {
   });
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const redeemMut = useMutation({
     mutationFn: async (id: number) => (await apiRequest("POST", `/api/rewards/${id}/redeem`)).json(),
@@ -56,6 +58,7 @@ export default function Shop() {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight" data-testid="text-page-title">Rewards shop</h1>
@@ -93,7 +96,23 @@ export default function Shop() {
               >
                 <span className="font-num">{r.cost.toLocaleString()}</span> XP
               </button>
-              <button onClick={() => { if (confirm("Remove this reward?")) delMut.mutate(r.id); }} className="text-muted-foreground hover:text-destructive p-1 hover-elevate rounded" data-testid={`button-delete-reward-${r.id}`} aria-label="Delete reward">
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    const ok = await confirm({
+                      title: "Remove this reward?",
+                      description: `"${r.name}" will be deleted from your shop.`,
+                      confirmLabel: "Remove",
+                      danger: true,
+                    });
+                    if (ok) delMut.mutate(r.id);
+                  })();
+                }}
+                className="text-muted-foreground hover:text-destructive p-1 hover-elevate rounded"
+                data-testid={`button-delete-reward-${r.id}`}
+                aria-label="Delete reward"
+              >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

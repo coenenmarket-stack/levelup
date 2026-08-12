@@ -91,6 +91,29 @@ export function BackHandlerProvider({ children }: { children: ReactNode }) {
     return false;
   }, [loc, setLoc]);
 
+  const goBackRef = useRef(goBack);
+  goBackRef.current = goBack;
+
+  // Android hardware back → same stack as edge swipe.
+  useEffect(() => {
+    let handle: { remove: () => Promise<void> } | null = null;
+    void (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (!Capacitor.isNativePlatform()) return;
+        const { App: CapApp } = await import("@capacitor/app");
+        handle = await CapApp.addListener("backButton", () => {
+          goBackRef.current();
+        });
+      } catch {
+        /* web / unavailable */
+      }
+    })();
+    return () => {
+      void handle?.remove();
+    };
+  }, []);
+
   const api = useMemo(
     () => ({ register, goBack, canGoBack }),
     [register, goBack, canGoBack],

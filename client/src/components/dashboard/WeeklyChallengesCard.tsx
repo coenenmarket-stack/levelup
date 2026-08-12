@@ -17,6 +17,7 @@ export function WeeklyChallengesCard() {
       return res.json() as Promise<{ xpEarned: number }>;
     },
     onSuccess: (result) => {
+      void import("@/lib/haptics").then(({ hapticSuccess }) => void hapticSuccess());
       toast({
         title: "Weekly reward claimed",
         description: `+${result.xpEarned} XP`,
@@ -92,10 +93,10 @@ export function WeeklyChallengesCard() {
                   <span className="text-[11px] text-emerald-400 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Claimed
                   </span>
-                ) : (
+                ) : canClaim ? (
                   <button
                     type="button"
-                    disabled={!canClaim || claimMut.isPending}
+                    disabled={claimMut.isPending}
                     onClick={() => claimMut.mutate(c.key)}
                     data-testid={`button-claim-${c.key}`}
                     className="text-xs px-2.5 py-1 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 hover-elevate flex items-center gap-1"
@@ -107,6 +108,10 @@ export function WeeklyChallengesCard() {
                     )}
                     Claim
                   </button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground font-num">
+                    {c.progress}/{c.target}
+                  </span>
                 )}
               </div>
             </div>

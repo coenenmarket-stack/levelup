@@ -14,6 +14,11 @@ import {
   writeCoachMemory,
   type CoachMemory,
 } from "@/lib/personalization/coachMemory";
+import {
+  clearCoachChatLocal,
+  readCoachChatLocal,
+  writeCoachChatLocal,
+} from "@/lib/personalization/coachChatLocal";
 import { buildCoachActionLinks, type CoachActionLink } from "@/lib/personalization/nextAction";
 import { getCareerPath } from "@/lib/careerPaths";
 import { FeatureUnavailable } from "@/components/FeatureUnavailable";
@@ -40,6 +45,7 @@ export default function Coach() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [prefs, setPrefs] = useState<PersonalizationPrefs>(DEFAULT_PERSONALIZATION);
   const [memory, setMemory] = useState<CoachMemory | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const gated = !LAUNCH_FLAGS.aiCoachEnabled;
 
@@ -52,6 +58,11 @@ export default function Coach() {
       ]);
       setPrefs(p);
       setMemory(m);
+      const saved = readCoachChatLocal(String(me.id));
+      if (saved.length > 0) {
+        setMessages(saved.map((msg) => ({ role: msg.role, text: msg.text, fallback: msg.fallback })));
+      }
+      setHydrated(true);
     })();
   }, [me?.id, gated]);
 
@@ -64,10 +75,16 @@ export default function Coach() {
   }, [character, prefs]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (character && messages.length === 0 && welcome) {
       setMessages([{ role: "coach", text: welcome }]);
     }
-  }, [character, messages.length, welcome]);
+  }, [character, messages.length, welcome, hydrated]);
+
+  useEffect(() => {
+    if (!me?.id || !hydrated || messages.length === 0) return;
+    writeCoachChatLocal(String(me.id), messages);
+  }, [messages, me?.id, hydrated]);
 
   useEffect(() => {
     const el = scrollerRef.current;
@@ -136,6 +153,7 @@ export default function Coach() {
   }
 
   function handleReset() {
+    if (me?.id) clearCoachChatLocal(String(me.id));
     setMessages(
       character
         ? [{ role: "coach", text: `Fresh slate, ${character.name}. What do you want to work on?` }]
@@ -156,7 +174,7 @@ export default function Coach() {
   }
 
   return (
-    <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 200px)" }}>
+    <div className="flex flex-col" style={{ minHeight: "calc(100dvh - 120px)" }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center gold-glow">
@@ -260,7 +278,7 @@ export default function Coach() {
         </div>
       )}
 
-      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] surface-raised rounded-2xl p-2 flex items-end gap-2 border border-card-border">
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] surface-raised rounded-2xl p-2 flex items-end gap-2 border border-card-border">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

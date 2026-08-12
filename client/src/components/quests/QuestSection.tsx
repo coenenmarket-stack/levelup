@@ -7,6 +7,7 @@ type Props = {
   title: string;
   count: number;
   emptyMessage?: string;
+  emptyAction?: ReactNode;
   collapsible?: boolean;
   autoCollapseThreshold?: number;
   children: ReactNode;
@@ -17,6 +18,7 @@ export function QuestSection({
   title,
   count,
   emptyMessage,
+  emptyAction,
   collapsible = false,
   autoCollapseThreshold = COMPLETED_SECTION_AUTO_COLLAPSE,
   children,
@@ -43,7 +45,10 @@ export function QuestSection({
     return (
       <section className="space-y-2.5" data-testid={testId}>
         {header}
-        <div className="surface rounded-xl p-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
+        <div className="surface rounded-xl p-6 text-center space-y-3">
+          <div className="text-sm text-muted-foreground">{emptyMessage}</div>
+          {emptyAction}
+        </div>
       </section>
     );
   }
