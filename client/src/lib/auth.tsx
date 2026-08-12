@@ -30,11 +30,12 @@ import {
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { httpsCallable } from "firebase/functions";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, collection, getDocs, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
 import { auth, db, functions, googleProvider, facebookProvider, appleProvider } from "./firebase";
 import type { Me } from "./types";
 import { SCHEMA_VERSION } from "./gameLogic";
+import { wipeCharacterProgress } from "./characterWipe";
 import {
   shouldUseGoogleRedirect,
   shouldUseNativeGoogleBrowser,
@@ -80,16 +81,8 @@ async function migrateIfStale(uid: string): Promise<boolean> {
   const data = snap.data() as any;
   const v = data.schemaVersion ?? 0;
   if (v >= SCHEMA_VERSION) return false;
-  // Old character — wipe character doc + subcollections.
-  for (const sub of ["quests", "categories", "achievements", "rewards", "completions"]) {
-    const existing = await getDocs(collection(charRef, sub));
-    if (existing.size > 0) {
-      const batch = writeBatch(db);
-      existing.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    }
-  }
-  await deleteDoc(charRef);
+  // Old character — full progression wipe (chunked) + force re-onboarding.
+  await wipeCharacterProgress(uid);
   // Flip onboarded flag back to false so the app routes to onboarding.
   await updateDoc(doc(db, "users", uid), { onboarded: false });
   return true;

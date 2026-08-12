@@ -24,7 +24,7 @@ import {
 } from "./weeklyChallenges";
 import { candidateDayKeys, dayKeyLocal } from "./dayKey";
 import { ensureAchievementDocs } from "./achievements";
-import { XP_TO_NEXT_LEVEL, xpToNextSkillLevel, SKILL_MAX_LEVEL } from "@shared/schema";
+import { XP_TO_NEXT_LEVEL, xpToNextSkillLevel, xpForLevel, levelFromTotalXp, remainderXpTowardNext } from "@shared/schema";
 
 // ------------------------------------------------------------
 // Helpers
@@ -238,8 +238,14 @@ async function readCategories(uid: string) {
   const snap = await getDocs(collection(db, "characters", uid, "categories"));
   return snap.docs.map((d) => {
     const c: any = docToObj(d);
-    const level = Math.max(1, Math.min(SKILL_MAX_LEVEL, Number(c.level) || 1));
+    const totalXp =
+      typeof c.totalXp === "number"
+        ? c.totalXp
+        : xpForLevel(Math.max(1, Number(c.level) || 1)) + (Number(c.xp) || 0);
+    const level = levelFromTotalXp(totalXp);
+    c.totalXp = totalXp;
     c.level = level;
+    c.xp = remainderXpTowardNext(totalXp);
     c.xpToNext = xpToNextSkillLevel(level);
     return c;
   });

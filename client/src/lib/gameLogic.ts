@@ -20,12 +20,12 @@ import {
   evaluateAchievements,
   seedAchievementsOnOnboarding,
 } from "./achievements";
+import { wipeCharacterProgress } from "./characterWipe";
 import {
   XP_TO_NEXT_LEVEL,
   SKILL_XP_BY_DIFFICULTY,
   applySkillXp,
   xpForLevel,
-  xpToNextSkillLevel,
   startingLevelFromAssessment,
   skillRankForLevel,
   SKILL_MAX_LEVEL,
@@ -63,7 +63,7 @@ const CATEGORY_DEFS = [
 ];
 
 /** Bump schema to force hard reset + re-onboarding for OSRS skill progression. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 const CORE_STAT_KEYS = [
   "strength",
@@ -74,6 +74,17 @@ const CORE_STAT_KEYS = [
   "relationships",
 ] as const;
 type CoreStatKey = (typeof CORE_STAT_KEYS)[number];
+
+/** Map legacy quest categories onto the modern 5 skill trees. */
+const LEGACY_CATEGORY_TO_MODERN: Record<string, string> = {
+  finance: "wealth",
+  learning: "mindset",
+  hustle: "career",
+};
+
+function modernCategoryKey(category: string): string {
+  return LEGACY_CATEGORY_TO_MODERN[category] ?? category;
+}
 
 function skillXpForDifficulty(difficulty: string): number {
   return SKILL_XP_BY_DIFFICULTY[difficulty] ?? SKILL_XP_BY_DIFFICULTY.easy;
@@ -311,13 +322,13 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
   const wealthXp = xpForLevel(wealth);
   const relationshipsXp = xpForLevel(relationships);
 
-  // Category starting levels mirror the assessment for that life area.
+  // Category starting levels mirror assessment + the same class bonuses as cores.
   const categoryStartLevel: Record<string, number> = {
-    health: startingLevelFromAssessment(healthScore),
-    wealth: startingLevelFromAssessment(wealthScore),
-    career: startingLevelFromAssessment(careerScore),
-    family: startingLevelFromAssessment(familyScore),
-    mindset: startingLevelFromAssessment(mindsetScore),
+    health: bump(startingLevelFromAssessment(healthScore), Math.max(cb.strength ?? 0, cb.health ?? 0)),
+    wealth: bump(startingLevelFromAssessment(wealthScore), cb.wealth),
+    career: bump(startingLevelFromAssessment(careerScore), cb.intelligence),
+    family: bump(startingLevelFromAssessment(familyScore), cb.relationships),
+    mindset: bump(startingLevelFromAssessment(mindsetScore), cb.discipline),
   };
 
   // Legacy Score = sum of skill-tree levels (5..495).
@@ -349,18 +360,10 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
 
   const charRef = doc(db, "characters", uid);
 
-  // Wipe any existing subcollections (for re-onboarding)
-  for (const sub of ["quests", "categories", "achievements", "rewards", "completions"]) {
-    const existing = await getDocs(collection(charRef, sub));
-    if (existing.size > 0) {
-      const batch = writeBatch(db);
-      existing.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    }
-  }
+  // Full progression wipe (chunked) before re-seed — includes weekly/daily caches.
+  await wipeCharacterProgress(uid);
 
   // Write the character document
-  const { setDoc } = await import("firebase/firestore");
   await setDoc(charRef, charDoc);
 
   // Seed categories (OSRS skill trees) — start at assessment level.
@@ -508,6 +511,11 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const baseSkillXp = skillXpForDifficulty(quest.difficulty);
   const awardedSkillXp = Math.max(1, Math.round(baseSkillXp * streakMult));
   const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
+  // Split across multiple cores so health (strength+health) isn't a 2× free ride.
+  const perStatXp =
+    impactStats.length > 1
+      ? Math.max(1, Math.round(awardedSkillXp / impactStats.length))
+      : awardedSkillXp;
 
   const updates: any = {
     xp,
@@ -523,41 +531,71 @@ export async function completeQuestLocal(uid: string, questId: string) {
 
   for (const stat of impactStats) {
     const prevTotal = totalXpForStat(char, stat);
-    const progress = applySkillXp(prevTotal, awardedSkillXp);
+    const progress = applySkillXp(prevTotal, perStatXp);
     updates[stat] = progress.level;
     updates[`${stat}Xp`] = progress.totalXp;
   }
 
-  // Category / skill-tree XP (OSRS curve, cap 99)
-  const catRef = doc(charRef, "categories", quest.category);
+  // Category / skill-tree XP (OSRS curve, cap 99). Normalize legacy keys.
+  const treeKey = modernCategoryKey(quest.category);
+  const catRef = doc(charRef, "categories", treeKey);
   const catSnap = await getDoc(catRef);
   let questCategoryLevel: number | null = null;
-  if (catSnap.exists()) {
-    const cat: any = catSnap.data();
+  const catMeta = CATEGORY_DEFS.find((c) => c.key === treeKey);
+  if (catSnap.exists() || catMeta) {
+    const cat: any = catSnap.exists()
+      ? catSnap.data()
+      : {
+          key: treeKey,
+          name: catMeta!.name,
+          icon: catMeta!.icon,
+          color: catMeta!.color,
+          xp: 0,
+          totalXp: 0,
+          level: 1,
+        };
     const prevTotal =
       typeof cat.totalXp === "number"
         ? cat.totalXp
         : xpForLevel(cat.level ?? 1) + (cat.xp ?? 0);
     const progress = applySkillXp(prevTotal, awardedSkillXp);
     questCategoryLevel = progress.level;
-    await updateDoc(catRef, {
-      xp: progress.xp,
-      totalXp: progress.totalXp,
-      level: progress.level,
-      rank: skillRankForLevel(progress.level),
-    });
+    await setDoc(
+      catRef,
+      {
+        key: treeKey,
+        name: cat.name ?? catMeta?.name ?? treeKey,
+        icon: cat.icon ?? catMeta?.icon ?? "⭐",
+        color: cat.color ?? catMeta?.color ?? "#10b981",
+        xp: progress.xp,
+        totalXp: progress.totalXp,
+        level: progress.level,
+        rank: skillRankForLevel(progress.level),
+      },
+      { merge: true },
+    );
   }
 
-  // Legacy Score = sum of skill-tree levels (capped 99 each) → 5..495
+  // Legacy Score = sum of the 5 modern skill-tree levels only (ignore leftover legacy docs).
   const allCatsSnap = await getDocs(collection(charRef, "categories"));
-  let totalLevel = 0;
+  const levelByKey: Record<string, number> = {};
   for (const d of allCatsSnap.docs) {
     const c: any = d.data();
+    const key = String(c.key ?? d.id);
+    const modern = modernCategoryKey(key);
     const lvl =
-      d.id === quest.category && questCategoryLevel != null
+      modern === treeKey && questCategoryLevel != null
         ? questCategoryLevel
         : (c.level ?? 1);
-    totalLevel += Math.min(SKILL_MAX_LEVEL, Math.max(1, lvl));
+    // Prefer the highest if both legacy + modern somehow exist.
+    levelByKey[modern] = Math.max(levelByKey[modern] ?? 0, Math.min(SKILL_MAX_LEVEL, Math.max(1, lvl)));
+  }
+  if (questCategoryLevel != null) {
+    levelByKey[treeKey] = Math.max(levelByKey[treeKey] ?? 0, questCategoryLevel);
+  }
+  let totalLevel = 0;
+  for (const cat of CATEGORY_DEFS) {
+    totalLevel += levelByKey[cat.key] ?? 1;
   }
   updates.legacyScore = totalLevel;
   await updateDoc(charRef, updates);
@@ -581,7 +619,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
         const c: any = d.data();
         if (c.key) categoryLevels[c.key] = c.level ?? 1;
       });
-      if (questCategoryLevel != null) categoryLevels[quest.category] = questCategoryLevel;
+      if (questCategoryLevel != null) categoryLevels[treeKey] = questCategoryLevel;
       await evaluateAchievements(uid, {
         allComps,
         character: { ...char, ...updates },

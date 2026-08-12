@@ -8,6 +8,7 @@ import { Flame, Settings as SettingsIcon, ChevronRight } from "lucide-react";
 import { AVATAR_CLASSES } from "@shared/schema";
 import { SkillTreeDetailDialog } from "@/components/SkillTreeDetailDialog";
 import { SKILL_TREE_INFO } from "@/lib/statInfo";
+import { xpToNextSkillLevel } from "@shared/schema";
 
 const AVATAR_EMOJI: Record<string, string> = Object.fromEntries(AVATAR_CLASSES.map(a => [a.key, a.emoji]));
 
@@ -72,7 +73,7 @@ export default function CharacterPage() {
         </div>
         <div className="space-y-2.5">
           {(cats ?? []).map((c) => {
-            const xpToNext = c.xpToNext ?? Math.max(1, c.level * 100);
+            const xpToNext = c.xpToNext ?? xpToNextSkillLevel(c.level ?? 1);
             return (
             <button
               key={c.id}

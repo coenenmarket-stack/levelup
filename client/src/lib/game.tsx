@@ -90,7 +90,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     },
     onSuccess: (result, questId, context) => {
       const id = Date.now();
-      setFloats((s) => [...s, { id, amount: result.xpEarned }]);
+      const floatXp = result.skillXpEarned ?? result.xpEarned;
+      setFloats((s) => [...s, { id, amount: floatXp }]);
       setTimeout(() => setFloats((s) => s.filter((x) => x.id !== id)), 1600);
 
       void import("./haptics").then(({ hapticLight, hapticSuccess }) => {
@@ -140,7 +141,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
         void (async () => {
           try {
-            const cats = qc.getQueryData<Category[]>(["/api/categories"]) ?? [];
+            // Prefer fresh category levels — cache may still be pre-quest.
+            const cats = (await qc.fetchQuery({
+              queryKey: ["/api/categories"],
+            })) as Category[];
             await syncPublicProfileLocal(uid, result.character, cats, {
               showLifeGoal: me?.showLifeGoal !== false,
             });

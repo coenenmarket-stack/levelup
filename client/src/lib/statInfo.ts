@@ -32,7 +32,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Higher Strength means better stamina, easier workouts, and a body that keeps up with your ambitions. It compounds into confidence, resilience, and longevity.",
     howToLevel:
-      "Complete Health quests for Strength XP (OSRS curve, caps at 99). Early levels fly — late game is a real grind.",
+      "Complete Health quests. Skill-tree XP goes into Health; core Strength and Health share that XP (split) on the OSRS curve to 99.",
   },
   {
     key: "intelligence",
@@ -80,7 +80,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Strong Health is the foundation for everything else. Better energy, mood, and recovery make Strength, Discipline, and Relationships easier to build.",
     howToLevel:
-      "Complete Health quests for Health XP (sleep, nutrition, recovery). Shares the Health skill tree grind to 99.",
+      "Complete Health quests. Vitality XP is shared with Strength from the same Health skill-tree grind to 99.",
   },
   {
     key: "relationships",

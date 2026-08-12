@@ -145,11 +145,10 @@ export const DIFFICULTY_XP: Record<string, number> = { easy: 10, medium: 25, har
 
 export const CATEGORY_DEFS = [
   { key: "health", name: "Health", icon: "💪", color: "#10b981" },
+  { key: "wealth", name: "Wealth", icon: "💰", color: "#f59e0b" },
   { key: "career", name: "Career", icon: "💼", color: "#3b82f6" },
-  { key: "finance", name: "Finance", icon: "💰", color: "#f59e0b" },
   { key: "family", name: "Family", icon: "❤️", color: "#ef4444" },
-  { key: "learning", name: "Learning", icon: "📚", color: "#8b5cf6" },
-  { key: "hustle", name: "Side Hustles", icon: "🚀", color: "#ec4899" },
+  { key: "mindset", name: "Mindset", icon: "🧠", color: "#8b5cf6" },
 ] as const;
 
 export const AVATAR_CLASSES = [

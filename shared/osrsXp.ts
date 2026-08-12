@@ -16,6 +16,7 @@ export const HERO_XP_TO_NEXT_LEVEL = (level: number) => Math.round(50 + level * 
  * Skill XP granted per quest difficulty.
  * Tuned for ~4–7 months of focused daily play to a single 99
  * (≈3 medium quests/day into one skill, with streak bonus).
+ * Early OSRS levels still move fast (curve property); late game is the grind.
  */
 export const SKILL_XP_BY_DIFFICULTY: Record<string, number> = {
   easy: 7_000,

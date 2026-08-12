@@ -5,7 +5,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { XPBar } from "@/components/XPBar";
 import type { CoreStatInfo } from "@/lib/statInfo";
 import { SKILL_MAX_LEVEL, xpToNextSkillLevel } from "@shared/schema";
 import { Sparkles, TrendingUp, Swords } from "lucide-react";
@@ -124,11 +123,6 @@ export function StatDetailDialog({
           {typeof totalXp === "number" && (
             <div className="pt-1 text-xs text-muted-foreground">
               Lifetime XP: <span className="font-num text-foreground">{totalXp.toLocaleString()}</span>
-            </div>
-          )}
-          {!maxed && (
-            <div className="pt-1">
-              <XPBar value={into} max={Math.max(1, xpToNext)} showText={false} height="h-2" />
             </div>
           )}
         </div>
