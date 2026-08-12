@@ -1,18 +1,15 @@
 # Codemagic builds iOS from Capacitor — configure signing in the Codemagic UI first.
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-capacitor-app/
 #
-# IMPORTANT — pick the RIGHT workflow + branch:
-#   ✅ ios-testflight-launch  → branch cursor/app-store-launch-assets
-#      Display: "… NEW ICON + Google auth …"
-#   ❌ ios-testflight-main    → branch main (OLD icon / broken Google in WKWebView)
-#      Display: "OLD / main — do NOT use for icon or Google auth"
+# Single source of truth: build branch `main` with workflow `ios-testflight-launch`.
+# Display name: "Level Up Life – iOS TestFlight (main)"
 
 workflows:
   # -------------------------------------------------------------------------
-  # USE THIS for TestFlight until launch assets are merged to main.
+  # Primary TestFlight / App Store IPA workflow — always use branch `main`.
   # -------------------------------------------------------------------------
   ios-testflight-launch:
-    name: "Level Up Life – iOS TestFlight (NEW ICON + Google auth / app-store-launch)"
+    name: "Level Up Life – iOS TestFlight (main)"
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -34,11 +31,8 @@ workflows:
       events:
         - push
       branch_patterns:
-        - pattern: cursor/app-store-launch-assets
-          include: true
-        # Explicitly exclude main so this workflow never builds the wrong branch.
         - pattern: main
-          include: false
+          include: true
 
     scripts:
       - name: Install Node dependencies
@@ -48,7 +42,7 @@ workflows:
         script: |
           set -euo pipefail
           echo "=============================================="
-          echo "WORKFLOW=ios-testflight-launch (NEW ICON)"
+          echo "WORKFLOW=ios-testflight-launch"
           echo "CM_COMMIT=${CM_COMMIT:-}"
           echo "CM_BRANCH=${CM_BRANCH:-}"
           echo "BUILD_NUMBER=${BUILD_NUMBER:-}"
@@ -56,9 +50,11 @@ workflows:
           git rev-parse HEAD
           git log -1 --oneline
           case "${CM_BRANCH:-}" in
-            cursor/app-store-launch-assets) echo "Branch OK" ;;
+            main|cursor/app-store-launch-assets)
+              echo "Branch OK (${CM_BRANCH})"
+              ;;
             *)
-              echo "ERROR: This workflow must run on cursor/app-store-launch-assets"
+              echo "ERROR: This workflow must run on main"
               echo "Got CM_BRANCH=${CM_BRANCH:-empty}"
               exit 1
               ;;
@@ -202,11 +198,11 @@ workflows:
         # via TestFlight without that flag.
 
   # -------------------------------------------------------------------------
-  # OLD — do not use for icon / Google auth TestFlight until main is merged.
-  # Kept for emergency main-branch builds only. Name is intentionally scary.
+  # Emergency / alternate main build (same scripts as launch, no auto-trigger).
+  # Prefer ios-testflight-launch for normal TestFlight runs.
   # -------------------------------------------------------------------------
   ios-testflight-main:
-    name: "OLD / main — do NOT use for icon or Google auth"
+    name: "Level Up Life – iOS TestFlight (main backup)"
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -224,7 +220,6 @@ workflows:
         XCODE_SCHEME: App
         APP_STORE_CONNECT_PUBLISHER: codemagic
 
-    # No automatic push trigger — start manually only if you really mean main.
     triggering:
       events: []
       branch_patterns:
@@ -237,10 +232,10 @@ workflows:
       - name: Install Node dependencies
         script: npm ci
 
-      - name: Warn that this is the OLD main workflow
+      - name: Log branch/commit
         script: |
           set -euo pipefail
-          echo "WARNING: ios-testflight-main — OLD icon / no Safari Google bridge"
+          echo "WORKFLOW=ios-testflight-main (backup)"
           echo "CM_COMMIT=${CM_COMMIT:-} CM_BRANCH=${CM_BRANCH:-} BUILD_NUMBER=${BUILD_NUMBER:-}"
           git rev-parse HEAD
           git log -1 --oneline
@@ -253,6 +248,18 @@ workflows:
 
       - name: Sync Capacitor iOS
         script: npx cap sync ios
+
+      - name: Inject GoogleService-Info.plist (optional for core TF)
+        script: |
+          set -euo pipefail
+          DEST="$CM_BUILD_DIR/ios/App/App/GoogleService-Info.plist"
+          if [ -n "${GOOGLE_SERVICE_INFO_PLIST_BASE64:-}" ]; then
+            echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > "$DEST"
+            test -s "$DEST"
+            echo "Wrote GoogleService-Info.plist ($(wc -c < "$DEST" | tr -d ' ') bytes)"
+          else
+            echo "WARN: No GOOGLE_SERVICE_INFO_PLIST_BASE64 — JS Firebase Auth still works."
+          fi
 
       - name: Verify web assets synced into iOS
         script: |
@@ -272,13 +279,14 @@ workflows:
           npm run icons
           npm run cap:assets
           npm run icons:ios
-          npm run icons:verify || echo "icons:verify failed (expected on old main without full AppIcon set)"
+          npm run icons:verify
 
       - name: Set iOS build number
         script: |
           cd ios/App
           agvtool new-version -all "$BUILD_NUMBER"
-          echo "CFBundleVersion set to $BUILD_NUMBER (commit ${CM_COMMIT:-unknown})"
+          agvtool new-marketing-version 1.0.1
+          echo "CFBundleVersion=$BUILD_NUMBER MARKETING_VERSION=1.0.1 (commit ${CM_COMMIT:-unknown})"
 
       - name: Set up code signing
         script: |
@@ -293,9 +301,6 @@ workflows:
             --create \
             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
-          # App Store export (NOT TestFlight Internal Only) so the IPA can be
-          # selected for App Store Review. Internal-only builds are TF-usable
-          # but cannot be submitted for release.
           xcode-project use-profiles \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             --archive-method app-store
@@ -306,6 +311,27 @@ workflows:
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
 
+      - name: Verify IPA contains synced web bundle
+        script: |
+          set -euo pipefail
+          IPA=$(ls -1 "$CM_BUILD_DIR"/build/ios/ipa/*.ipa 2>/dev/null | head -1)
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No IPA under build/ios/ipa/"
+            exit 1
+          fi
+          BYTES=$(wc -c < "$IPA" | tr -d ' ')
+          if [ "$BYTES" -lt 2000000 ]; then
+            echo "ERROR: IPA smaller than 2 MB — likely missing web assets or export failed"
+            exit 1
+          fi
+          TMP=$(mktemp -d)
+          unzip -q "$IPA" -d "$TMP"
+          APP=$(find "$TMP/Payload" -maxdepth 1 -type d -name '*.app' | head -1)
+          test -f "$APP/public/index.html"
+          test -f "$APP/capacitor.config.json"
+          ls "$APP/public/assets"/*.js >/dev/null 2>&1
+          echo "IPA verification OK"
+
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
@@ -313,7 +339,6 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        # Upload only — see ios-testflight-launch publishing notes.
 
   ios-simulator:
     name: Level Up Life — iOS Simulator (CI smoke)
