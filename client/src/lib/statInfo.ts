@@ -32,7 +32,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Higher Strength means better stamina, easier workouts, and a body that keeps up with your ambitions. It compounds into confidence, resilience, and longevity.",
     howToLevel:
-      "Complete Health quests: exercise, steps, mobility, and other physical training.",
+      "Complete Health quests for Strength XP (OSRS curve, caps at 99). Early levels fly — late game is a real grind.",
   },
   {
     key: "intelligence",
@@ -44,7 +44,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Raising Intelligence sharpens decision-making, speeds up skill growth, and helps you earn more and contribute at a higher level at work.",
     howToLevel:
-      "Complete Career quests: deep work, certifications, training, and deliberate practice.",
+      "Complete Career quests for Intelligence XP. Hitting 99 means months of deliberate practice — treat it like a cape.",
   },
   {
     key: "discipline",
@@ -56,7 +56,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Discipline turns goals into systems. It protects your streak, reduces decision fatigue, and makes every other stat easier to raise.",
     howToLevel:
-      "Complete Mindset quests: routines, journaling, focus blocks, and intentional practice.",
+      "Complete Mindset quests for Discipline XP. Consistency compounds; 99 is earned one day at a time.",
   },
   {
     key: "wealth",
@@ -68,7 +68,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Growing Wealth buys freedom: less anxiety, more options, and the runway to invest in health, family, and long-term goals.",
     howToLevel:
-      "Complete Wealth quests: budgeting, saving, debt payoff, and income-building actions.",
+      "Complete Wealth quests for Wealth XP. Budgeting and income actions stack toward a hard-earned 99.",
   },
   {
     key: "health",
@@ -80,7 +80,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Strong Health is the foundation for everything else. Better energy, mood, and recovery make Strength, Discipline, and Relationships easier to build.",
     howToLevel:
-      "Complete Health quests: sleep, hydration, nutrition, rest, and recovery habits.",
+      "Complete Health quests for Health XP (sleep, nutrition, recovery). Shares the Health skill tree grind to 99.",
   },
   {
     key: "relationships",
@@ -92,7 +92,7 @@ export const CORE_STATS: readonly CoreStatInfo[] = [
     improvesLife:
       "Investing in Relationships builds belonging, support, and legacy. Strong bonds buffer stress and make wins more meaningful.",
     howToLevel:
-      "Complete Family quests: quality time, check-ins, date nights, and intentional connection.",
+      "Complete Family quests for Relationships XP. Presence over time is how you push toward 99.",
   },
 ] as const;
 
@@ -114,35 +114,35 @@ export const SKILL_TREE_INFO: Record<string, SkillTreeInfo> = {
     summary: "Train your body and recovery so you have energy for every other quest.",
     improvesLife:
       "Consistent Health practice raises strength, sleep quality, and daily energy — the base layer of a leveled-up life.",
-    howToLevel: "Log workouts, steps, water, sleep, and recovery as Health quests.",
+    howToLevel: "Log workouts, steps, water, sleep, and recovery as Health quests — OSRS XP curve to 99.",
   },
   wealth: {
     key: "wealth",
     summary: "Build money skills that create security and optionality.",
     improvesLife:
       "Wealth mastery cuts stress and funds the lifestyle, tools, and experiences you care about.",
-    howToLevel: "Track spending, save, pay down debt, and grow income through Wealth quests.",
+    howToLevel: "Track spending, save, pay down debt, and grow income through Wealth quests toward 99.",
   },
   career: {
     key: "career",
     summary: "Level the craft you get paid for — skills, reputation, and promotions.",
     improvesLife:
       "Career growth compounds into better pay, more interesting work, and stronger Intelligence.",
-    howToLevel: "Ship work tasks, earn certifications, and practice deliberately via Career quests.",
+    howToLevel: "Ship work tasks, earn certifications, and practice deliberately via Career quests to 99.",
   },
   family: {
     key: "family",
     summary: "Invest in the people who make the grind worth it.",
     improvesLife:
       "Family skill raises Relationships and leaves a legacy of presence, not just productivity.",
-    howToLevel: "Protect quality time, date nights, and parenting goals as Family quests.",
+    howToLevel: "Protect quality time, date nights, and parenting goals as Family quests on the road to 99.",
   },
   mindset: {
     key: "mindset",
     summary: "Train attention, resilience, and the stories you tell yourself.",
     improvesLife:
       "Mindset fuels Discipline — you show up when it is hard and bounce back faster after setbacks.",
-    howToLevel: "Read, journal, meditate, and run focus practices as Mindset quests.",
+    howToLevel: "Read, journal, meditate, and run focus practices as Mindset quests. 99 is a long grind.",
   },
   // Legacy category keys still present in older characters
   finance: {

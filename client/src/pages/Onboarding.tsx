@@ -297,7 +297,7 @@ function StepWelcome() {
       </div>
       <div className="space-y-2.5 max-w-xs text-left text-sm w-full">
         <FeatureLine emoji="🎯" text="Daily quests for the life you want" />
-        <FeatureLine emoji="📈" text="Level up six core stats" />
+        <FeatureLine emoji="📈" text="Grind six core stats to 99 (OSRS curve)" />
         <FeatureLine emoji="🏆" text="Unlock achievements and rewards" />
         <FeatureLine emoji="🤖" text="An AI coach that knows your stats" />
       </div>

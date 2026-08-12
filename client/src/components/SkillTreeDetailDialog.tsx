@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { SkillTreeInfo } from "@/lib/statInfo";
+import { SKILL_MAX_LEVEL, xpToNextSkillLevel } from "@shared/schema";
 import { Sparkles, TrendingUp, Swords } from "lucide-react";
 
 type CategoryLike = {
@@ -16,6 +17,8 @@ type CategoryLike = {
   level: number;
   xp: number;
   rank: string;
+  totalXp?: number;
+  xpToNext?: number;
 };
 
 type Props = {
@@ -34,7 +37,10 @@ export function SkillTreeDetailDialog({ category, info, open, onOpenChange }: Pr
     "Raising this skill compounds into real progress across your quests and Legacy score.";
   const howTo =
     info?.howToLevel ?? `Complete ${category.name} quests to earn XP and level up this tree.`;
-  const xpMax = Math.max(1, category.level * 100);
+  const level = Math.max(1, Math.min(SKILL_MAX_LEVEL, category.level || 1));
+  const xpToNext = category.xpToNext ?? xpToNextSkillLevel(level);
+  const into = category.xp ?? 0;
+  const maxed = level >= SKILL_MAX_LEVEL;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -64,7 +70,8 @@ export function SkillTreeDetailDialog({ category, info, open, onOpenChange }: Pr
                   {category.name}
                 </DialogTitle>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Lv. <span className="font-num text-foreground font-semibold">{category.level}</span>
+                  Level <span className="font-num text-foreground font-semibold">{level}</span>
+                  <span className="text-muted-foreground"> / {SKILL_MAX_LEVEL}</span>
                   {" · "}
                   <span style={{ color: category.color }}>{category.rank}</span>
                 </div>
@@ -94,21 +101,35 @@ export function SkillTreeDetailDialog({ category, info, open, onOpenChange }: Pr
           />
 
           <div className="pt-1">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
-              <span>XP to next level</span>
-              <span className="font-num normal-case tracking-normal">
-                {category.xp} / {xpMax}
-              </span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-secondary/50 overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.min(100, (category.xp / xpMax) * 100)}%`,
-                  background: category.color,
-                }}
-              />
-            </div>
+            {maxed ? (
+              <div className="text-sm font-semibold" style={{ color: category.color }}>
+                Maxed — 99 achieved. This is a true grind cape.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
+                  <span>XP to level {level + 1}</span>
+                  <span className="font-num normal-case tracking-normal">
+                    {into.toLocaleString()} / {xpToNext.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-secondary/50 overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${xpToNext > 0 ? Math.min(100, (into / xpToNext) * 100) : 0}%`,
+                      background: category.color,
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            {typeof category.totalXp === "number" && (
+              <div className="text-xs text-muted-foreground mt-2">
+                Lifetime XP:{" "}
+                <span className="font-num text-foreground">{category.totalXp.toLocaleString()}</span>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

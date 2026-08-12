@@ -24,6 +24,7 @@ import {
 } from "./weeklyChallenges";
 import { candidateDayKeys, dayKeyLocal } from "./dayKey";
 import { ensureAchievementDocs } from "./achievements";
+import { XP_TO_NEXT_LEVEL, xpToNextSkillLevel, SKILL_MAX_LEVEL } from "@shared/schema";
 
 // ------------------------------------------------------------
 // Helpers
@@ -131,9 +132,6 @@ function docToObj<T = any>(snap: any): T {
   return normalize({ id: snap.id, ...data });
 }
 
-// XP curve mirror of shared/schema.ts so we can compute xpToNext client-side
-const XP_TO_NEXT_LEVEL = (level: number) => Math.round(50 + level * 75);
-
 // Title lookup mirror
 const TITLES = [
   { min: 1, title: "Novice Adventurer" },
@@ -238,7 +236,13 @@ async function readQuests(uid: string) {
 
 async function readCategories(uid: string) {
   const snap = await getDocs(collection(db, "characters", uid, "categories"));
-  return snap.docs.map(docToObj);
+  return snap.docs.map((d) => {
+    const c: any = docToObj(d);
+    const level = Math.max(1, Math.min(SKILL_MAX_LEVEL, Number(c.level) || 1));
+    c.level = level;
+    c.xpToNext = xpToNextSkillLevel(level);
+    return c;
+  });
 }
 
 async function readAchievements(uid: string) {

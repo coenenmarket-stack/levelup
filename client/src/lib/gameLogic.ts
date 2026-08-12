@@ -20,33 +20,40 @@ import {
   evaluateAchievements,
   seedAchievementsOnOnboarding,
 } from "./achievements";
+import {
+  XP_TO_NEXT_LEVEL,
+  SKILL_XP_BY_DIFFICULTY,
+  applySkillXp,
+  xpForLevel,
+  xpToNextSkillLevel,
+  startingLevelFromAssessment,
+  skillRankForLevel,
+  SKILL_MAX_LEVEL,
+} from "@shared/schema";
 
 // ============================================================================
-// Game constants (mirrors of functions/src/index.ts)
+// Game constants
 // ============================================================================
 
-export const XP_TO_NEXT_LEVEL = (level: number) => Math.round(50 + level * 75);
-const RANKS = ["Novice", "Apprentice", "Adept", "Expert", "Master", "Grandmaster", "Legend"];
-const rankForLevel = (level: number) => RANKS[Math.min(Math.floor((level - 1) / 5), RANKS.length - 1)];
-
-const TITLES = [
-  { min: 1, title: "Novice Adventurer" },
-  { min: 5, title: "Rising Hero" },
-  { min: 10, title: "Seasoned Adventurer" },
-  { min: 20, title: "Champion" },
-  { min: 35, title: "Veteran" },
-  { min: 50, title: "Legend" },
-  { min: 75, title: "Mythic" },
-  { min: 100, title: "Ascended" },
-];
 const titleForLevel = (level: number) => {
+  const TITLES = [
+    { min: 1, title: "Novice Adventurer" },
+    { min: 5, title: "Rising Hero" },
+    { min: 10, title: "Seasoned Adventurer" },
+    { min: 20, title: "Champion" },
+    { min: 35, title: "Veteran" },
+    { min: 50, title: "Legend" },
+    { min: 75, title: "Mythic" },
+    { min: 100, title: "Ascended" },
+  ];
   let cur = TITLES[0].title;
   for (const t of TITLES) if (level >= t.min) cur = t.title;
   return cur;
 };
 
-// New 6-category model. Hustle is split out into Side Hustles (Phase 5, separate hub).
-// Legacy is a derived score (avg of the 5 trainable stats), so it's not a quest category.
+export { XP_TO_NEXT_LEVEL };
+
+// Five trainable skill trees (OSRS-style 1–99).
 const CATEGORY_DEFS = [
   { key: "health", name: "Health", icon: "💪", color: "#10b981" },
   { key: "wealth", name: "Wealth", icon: "💰", color: "#f59e0b" },
@@ -55,7 +62,29 @@ const CATEGORY_DEFS = [
   { key: "mindset", name: "Mindset", icon: "🧠", color: "#8b5cf6" },
 ];
 
-export const SCHEMA_VERSION = 4;
+/** Bump schema to force hard reset + re-onboarding for OSRS skill progression. */
+export const SCHEMA_VERSION = 5;
+
+const CORE_STAT_KEYS = [
+  "strength",
+  "intelligence",
+  "discipline",
+  "wealth",
+  "health",
+  "relationships",
+] as const;
+type CoreStatKey = (typeof CORE_STAT_KEYS)[number];
+
+function skillXpForDifficulty(difficulty: string): number {
+  return SKILL_XP_BY_DIFFICULTY[difficulty] ?? SKILL_XP_BY_DIFFICULTY.easy;
+}
+
+function totalXpForStat(char: any, key: CoreStatKey): number {
+  const xpKey = `${key}Xp`;
+  if (typeof char[xpKey] === "number") return char[xpKey];
+  const level = Math.max(1, Math.min(SKILL_MAX_LEVEL, Number(char[key]) || 1));
+  return xpForLevel(level);
+}
 
 // Universal quests every class gets a slice of — covers the broad-strokes
 // habits everyone benefits from.
@@ -196,16 +225,14 @@ const STARTER_REWARDS = [
   { name: "Weekend Trip", description: "A real adventure", icon: "🏞️", cost: 5000 },
 ];
 
-// Maps quest categories → stats they bump on completion.
-// Stat keys stay the same for back-compat: strength=Health, wealth=Wealth,
-// intelligence=Career, relationships=Family, discipline=Mindset.
-const CATEGORY_STAT_IMPACT: Record<string, string[]> = {
-  health: ["strength"],
+// Maps quest categories → core stats that gain OSRS skill XP on completion.
+const CATEGORY_STAT_IMPACT: Record<string, CoreStatKey[]> = {
+  health: ["strength", "health"],
   wealth: ["wealth"],
   career: ["intelligence"],
   family: ["relationships"],
   mindset: ["discipline"],
-  // Legacy categories — still accepted at completion time so old data stays usable.
+  // Legacy categories
   finance: ["wealth"],
   learning: ["intelligence"],
   hustle: ["wealth", "intelligence"],
@@ -250,36 +277,51 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
   const familyScore = a.family ?? a.relationships ?? 5;
   const mindsetScore = a.mindset ?? a.discipline ?? 5;
 
-  // Starting stats: 10–100 scale, linear from a 1–10 input.
-  const base = (n: number) => Math.max(10, Math.min(100, 10 + Math.round(n * 9)));
-  let strength = base(healthScore);
-  let wealth = base(wealthScore);
-  let intelligence = base(careerScore);
-  let relationships = base(familyScore);
-  let discipline = base(mindsetScore);
-  // 'health' stat slot kept for back-compat with old UI — mirrors strength.
-  let health = strength;
+  // Starting core-stat LEVELS (1–10 from assessment), not the old 10–100 flat scores.
+  let strength = startingLevelFromAssessment(healthScore);
+  let health = startingLevelFromAssessment(healthScore);
+  let wealth = startingLevelFromAssessment(wealthScore);
+  let intelligence = startingLevelFromAssessment(careerScore);
+  let relationships = startingLevelFromAssessment(familyScore);
+  let discipline = startingLevelFromAssessment(mindsetScore);
 
-  const classBonus: Record<string, any> = {
-    entrepreneur: { wealth: 8, intelligence: 6, discipline: 4 },
-    tradesman: { discipline: 8, strength: 6, wealth: 4 },
-    parent: { relationships: 10, discipline: 6, health: 4 },
-    athlete: { strength: 10, health: 8, discipline: 4 },
-    student: { intelligence: 10, discipline: 6, wealth: 0 },
-    creator: { intelligence: 8, relationships: 4, discipline: 4 },
-    professional: { intelligence: 8, wealth: 6, discipline: 4 },
+  const classBonusLevels: Record<string, Partial<Record<CoreStatKey, number>>> = {
+    entrepreneur: { wealth: 2, intelligence: 1, discipline: 1 },
+    tradesman: { discipline: 2, strength: 1, wealth: 1 },
+    parent: { relationships: 2, discipline: 1, health: 1 },
+    athlete: { strength: 2, health: 2, discipline: 1 },
+    student: { intelligence: 2, discipline: 1 },
+    creator: { intelligence: 2, relationships: 1, discipline: 1 },
+    professional: { intelligence: 2, wealth: 1, discipline: 1 },
   };
-  const cb = classBonus[input.className] ?? {};
-  strength = Math.min(100, strength + (cb.strength ?? 0));
-  intelligence = Math.min(100, intelligence + (cb.intelligence ?? 0));
-  discipline = Math.min(100, discipline + (cb.discipline ?? 0));
-  wealth = Math.min(100, wealth + (cb.wealth ?? 0));
-  health = Math.min(100, health + (cb.health ?? 0));
-  relationships = Math.min(100, relationships + (cb.relationships ?? 0));
+  const cb = classBonusLevels[input.className] ?? {};
+  const bump = (cur: number, add: number | undefined) =>
+    Math.min(SKILL_MAX_LEVEL, cur + (add ?? 0));
+  strength = bump(strength, cb.strength);
+  health = bump(health, cb.health);
+  intelligence = bump(intelligence, cb.intelligence);
+  discipline = bump(discipline, cb.discipline);
+  wealth = bump(wealth, cb.wealth);
+  relationships = bump(relationships, cb.relationships);
 
-  // Legacy Score = Total Mastery (sum of skill levels). Every character starts at level 1 in all
-  // 5 categories, so starting total = 5. (Max = 5 × 99 = 495.)
-  const legacyScore = 5;
+  const strengthXp = xpForLevel(strength);
+  const healthXp = xpForLevel(health);
+  const intelligenceXp = xpForLevel(intelligence);
+  const disciplineXp = xpForLevel(discipline);
+  const wealthXp = xpForLevel(wealth);
+  const relationshipsXp = xpForLevel(relationships);
+
+  // Category starting levels mirror the assessment for that life area.
+  const categoryStartLevel: Record<string, number> = {
+    health: startingLevelFromAssessment(healthScore),
+    wealth: startingLevelFromAssessment(wealthScore),
+    career: startingLevelFromAssessment(careerScore),
+    family: startingLevelFromAssessment(familyScore),
+    mindset: startingLevelFromAssessment(mindsetScore),
+  };
+
+  // Legacy Score = sum of skill-tree levels (5..495).
+  const legacyScore = Object.values(categoryStartLevel).reduce((s, n) => s + n, 0);
 
   const charDoc = {
     name: input.characterName,
@@ -297,6 +339,7 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
     legacyScore,
     schemaVersion: SCHEMA_VERSION,
     strength, intelligence, discipline, wealth, health, relationships,
+    strengthXp, intelligenceXp, disciplineXp, wealthXp, healthXp, relationshipsXp,
     currentStreak: 0,
     longestStreak: 0,
     lastCompletionDate: null,
@@ -320,13 +363,18 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
   const { setDoc } = await import("firebase/firestore");
   await setDoc(charRef, charDoc);
 
-  // Seed categories
+  // Seed categories (OSRS skill trees) — start at assessment level.
   const catBatch = writeBatch(db);
   for (const cat of CATEGORY_DEFS) {
     const ref = doc(collection(charRef, "categories"), cat.key);
+    const level = categoryStartLevel[cat.key] ?? 1;
+    const totalXp = xpForLevel(level);
     catBatch.set(ref, {
       key: cat.key, name: cat.name, icon: cat.icon, color: cat.color,
-      xp: 0, level: 1, rank: "Novice",
+      xp: 0,
+      totalXp,
+      level,
+      rank: skillRankForLevel(level),
     });
   }
   await catBatch.commit();
@@ -445,7 +493,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
   const awardedXp = Math.max(1, Math.round(baseXp * streakMult));
   const streakBonusXp = awardedXp - baseXp;
 
-  // XP + level
+  // Hero / account XP + level (lighter curve — separate from skill grind)
   const oldLevel = char.level ?? 1;
   let xp = (char.xp ?? 0) + awardedXp;
   let level = oldLevel;
@@ -456,9 +504,11 @@ export async function completeQuestLocal(uid: string, questId: string) {
     leveledUp = true;
   }
 
-  // Stat bumps
+  // OSRS skill XP for the matching skill tree + core stats
+  const baseSkillXp = skillXpForDifficulty(quest.difficulty);
+  const awardedSkillXp = Math.max(1, Math.round(baseSkillXp * streakMult));
   const impactStats = CATEGORY_STAT_IMPACT[quest.category] ?? [];
-  const statBump = quest.difficulty === "hard" ? 2 : quest.difficulty === "medium" ? 1 : 0;
+
   const updates: any = {
     xp,
     level,
@@ -470,28 +520,35 @@ export async function completeQuestLocal(uid: string, questId: string) {
     lastCompletionDate: today,
     hoursInvested: (char.hoursInvested ?? 0) + (quest.difficulty === "hard" ? 60 : quest.difficulty === "medium" ? 30 : 10),
   };
+
   for (const stat of impactStats) {
-    updates[stat] = Math.min(100, (char[stat] ?? 10) + (statBump || 1));
+    const prevTotal = totalXpForStat(char, stat);
+    const progress = applySkillXp(prevTotal, awardedSkillXp);
+    updates[stat] = progress.level;
+    updates[`${stat}Xp`] = progress.totalXp;
   }
 
-  // Category XP (apply BEFORE computing Legacy so total-level is fresh)
+  // Category / skill-tree XP (OSRS curve, cap 99)
   const catRef = doc(charRef, "categories", quest.category);
   const catSnap = await getDoc(catRef);
   let questCategoryLevel: number | null = null;
   if (catSnap.exists()) {
     const cat: any = catSnap.data();
-    let newXp = (cat.xp ?? 0) + awardedXp;
-    let newLevel = cat.level ?? 1;
-    while (newXp >= XP_TO_NEXT_LEVEL(newLevel)) {
-      newXp -= XP_TO_NEXT_LEVEL(newLevel);
-      newLevel++;
-    }
-    questCategoryLevel = newLevel;
-    await updateDoc(catRef, { xp: newXp, level: newLevel, rank: rankForLevel(newLevel) });
+    const prevTotal =
+      typeof cat.totalXp === "number"
+        ? cat.totalXp
+        : xpForLevel(cat.level ?? 1) + (cat.xp ?? 0);
+    const progress = applySkillXp(prevTotal, awardedSkillXp);
+    questCategoryLevel = progress.level;
+    await updateDoc(catRef, {
+      xp: progress.xp,
+      totalXp: progress.totalXp,
+      level: progress.level,
+      rank: skillRankForLevel(progress.level),
+    });
   }
 
-  // Legacy Score = Total Mastery (sum of skill levels) (sum of all 5 category levels, capped 99 each).
-  // Read every category, but substitute the freshly-bumped level for the quest's category.
+  // Legacy Score = sum of skill-tree levels (capped 99 each) → 5..495
   const allCatsSnap = await getDocs(collection(charRef, "categories"));
   let totalLevel = 0;
   for (const d of allCatsSnap.docs) {
@@ -500,9 +557,9 @@ export async function completeQuestLocal(uid: string, questId: string) {
       d.id === quest.category && questCategoryLevel != null
         ? questCategoryLevel
         : (c.level ?? 1);
-    totalLevel += Math.min(99, Math.max(1, lvl));
+    totalLevel += Math.min(SKILL_MAX_LEVEL, Math.max(1, lvl));
   }
-  updates.legacyScore = totalLevel; // now 5..495 (sum of all 5 skill levels)
+  updates.legacyScore = totalLevel;
   await updateDoc(charRef, updates);
 
   const updatedCharSnap = await getDoc(charRef);
@@ -546,6 +603,7 @@ export async function completeQuestLocal(uid: string, questId: string) {
     oldLevel,
     newLevel: level,
     xpEarned: awardedXp,
+    skillXpEarned: awardedSkillXp,
     streakBonusXp,
     newlyUnlocked: [] as any[],
     xpToNext: XP_TO_NEXT_LEVEL(level),

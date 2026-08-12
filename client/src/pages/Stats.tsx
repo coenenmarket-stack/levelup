@@ -52,9 +52,9 @@ export default function StatsPage() {
       <section className="surface rounded-2xl p-4" data-testid="section-category-ranking">
         <h2 className="text-sm font-bold tracking-tight mb-3">Category rankings</h2>
         <div className="space-y-2.5">
-          {[...stats.categories].sort((a, b) => b.level - a.level || b.xp - a.xp).map((c, i) => {
-            const max = Math.max(...stats.categories.map(x => x.level * 100 + x.xp));
-            const score = c.level * 100 + c.xp;
+          {[...stats.categories].sort((a, b) => b.level - a.level || (b.totalXp ?? b.xp) - (a.totalXp ?? a.xp)).map((c, i) => {
+            const max = Math.max(...stats.categories.map(x => x.totalXp ?? (x.level * 1_000_000 + x.xp)), 1);
+            const score = c.totalXp ?? (c.level * 1_000_000 + c.xp);
             const pct = Math.max(6, (score / max) * 100);
             return (
               <div key={c.id} className="flex items-center gap-3" data-testid={`rank-${c.id}`}>
@@ -63,7 +63,7 @@ export default function StatsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span></div>
+                    <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span>/99</div>
                   </div>
                   <div className="mt-1 h-1.5 rounded-full bg-secondary/60 overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${pct}%`, background: c.color }} />

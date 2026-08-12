@@ -66,10 +66,14 @@ export default function CharacterPage() {
       <section className="space-y-3">
         <div className="px-0.5">
           <h2 className="text-base font-bold tracking-tight">Skill trees</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Tap a skill to see how it levels up your life</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            OSRS-style 1–99 grind · tap a skill for details
+          </p>
         </div>
         <div className="space-y-2.5">
-          {(cats ?? []).map((c) => (
+          {(cats ?? []).map((c) => {
+            const xpToNext = c.xpToNext ?? Math.max(1, c.level * 100);
+            return (
             <button
               key={c.id}
               type="button"
@@ -86,11 +90,18 @@ export default function CharacterPage() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold">{c.name}</div>
                     <div className="flex items-center gap-1.5">
-                      <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span> · <span style={{ color: c.color }}>{c.rank}</span></div>
+                      <div className="text-xs text-muted-foreground">Lv. <span className="font-num text-foreground">{c.level}</span><span className="text-muted-foreground">/99</span> · <span style={{ color: c.color }}>{c.rank}</span></div>
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
                   </div>
-                  <div className="mt-1.5"><XPBar value={c.xp} max={c.level * 100} showText={false} height="h-1.5" /></div>
+                  <div className="mt-1.5">
+                    <XPBar
+                      value={c.level >= 99 ? 1 : c.xp}
+                      max={c.level >= 99 ? 1 : Math.max(1, xpToNext)}
+                      showText={false}
+                      height="h-1.5"
+                    />
+                  </div>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
@@ -99,7 +110,8 @@ export default function CharacterPage() {
                 ))}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </section>
 

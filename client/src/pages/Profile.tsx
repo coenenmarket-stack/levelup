@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatDetailDialog } from "@/components/StatDetailDialog";
 import { CORE_STATS, type CoreStatInfo, type CoreStatKey } from "@/lib/statInfo";
 import { LAUNCH_FLAGS } from "@/lib/featureFlags";
+import { SKILL_MAX_LEVEL, remainderXpTowardNext, xpToNextSkillLevel, xpForLevel } from "@shared/schema";
 
 const AVATAR_EMOJI: Record<string, string> = {
   warrior: "⚔️", mage: "🧙", ranger: "🏹", rogue: "🗡️",
@@ -22,8 +23,15 @@ const CLASS_EMOJI: Record<string, string> = {
 
 const RARITY_ORDER = ["legendary", "epic", "rare", "common"] as const;
 
-function statValue(character: Character, key: CoreStatKey): number {
-  return character[key] ?? 0;
+function statLevel(character: Character, key: CoreStatKey): number {
+  return Math.max(1, Math.min(SKILL_MAX_LEVEL, Number(character[key]) || 1));
+}
+
+function statTotalXp(character: Character, key: CoreStatKey): number {
+  const xpKey = `${key}Xp` as const;
+  const raw = (character as any)[xpKey];
+  if (typeof raw === "number") return raw;
+  return xpForLevel(statLevel(character, key));
 }
 
 export default function ProfilePage() {
@@ -115,15 +123,21 @@ export default function ProfilePage() {
       {/* Legacy Score — Total Level across skills */}
       <LegacyCard score={character.legacyScore ?? 5} />
 
-      {/* Core stats */}
+      {/* Core stats — OSRS-style levels 1–99 */}
       <section className="space-y-3">
         <div className="px-0.5">
           <h2 className="text-base font-bold tracking-tight">Core stats</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Tap a stat to learn what it means</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Levels 1–99 · tap a stat for details
+          </p>
         </div>
         <div className="grid grid-cols-1 gap-2.5">
           {CORE_STATS.map(s => {
-            const value = statValue(character, s.key);
+            const level = statLevel(character, s.key);
+            const totalXp = statTotalXp(character, s.key);
+            const into = remainderXpTowardNext(totalXp);
+            const toNext = xpToNextSkillLevel(level);
+            const pct = level >= SKILL_MAX_LEVEL ? 100 : toNext > 0 ? Math.min(100, (into / toNext) * 100) : 0;
             return (
               <button
                 key={s.key}
@@ -139,15 +153,16 @@ export default function ProfilePage() {
                     <span className="text-sm font-semibold">{s.label}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Lv</span>
                     <span className="font-num text-sm font-bold" style={{ color: s.color }}>
-                      {value}<span className="text-muted-foreground text-[10px]"> / 100</span>
+                      {level}<span className="text-muted-foreground text-[10px]"> / {SKILL_MAX_LEVEL}</span>
                     </span>
                     <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                   </div>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-secondary/50 overflow-hidden">
                   <motion.div
-                    initial={{ width: 0 }} animate={{ width: `${value}%` }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                    initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                     className="h-full rounded-full"
                     style={{ background: `linear-gradient(90deg, ${s.color}, ${s.color}aa)` }}
                   />
@@ -160,7 +175,9 @@ export default function ProfilePage() {
 
       <StatDetailDialog
         stat={selectedStat}
-        value={selectedStat ? statValue(character, selectedStat.key) : 0}
+        level={selectedStat ? statLevel(character, selectedStat.key) : 1}
+        totalXp={selectedStat ? statTotalXp(character, selectedStat.key) : 0}
+        xpIntoLevel={selectedStat ? remainderXpTowardNext(statTotalXp(character, selectedStat.key)) : 0}
         open={!!selectedStat}
         onOpenChange={(open) => { if (!open) setSelectedStat(null); }}
       />
@@ -221,7 +238,7 @@ export default function ProfilePage() {
 }
 
 function LegacyCard({ score }: { score: number }) {
-  // Legacy Score = Total Level across all skills. Range: 5 (all level 1) → 495 (all 99).
+  // Legacy Score = Total Level across all skill trees. Range: 5 → 495 (5 × 99).
   const MAX = 495;
   const total = Math.min(MAX, Math.max(5, Math.round(score || 5)));
   const pct = Math.round(((total - 5) / (MAX - 5)) * 100);
@@ -257,7 +274,9 @@ function LegacyCard({ score }: { score: number }) {
               style={{ width: `${Math.max(1, pct)}%` }}
             />
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1.5">Sum of your 5 skill levels · Mastery score</div>
+          <div className="text-[10px] text-muted-foreground mt-1.5">
+            Sum of your 5 skill trees (each caps at 99)
+          </div>
         </div>
       </div>
     </div>

@@ -7,19 +7,38 @@ import {
 } from "@/components/ui/dialog";
 import { XPBar } from "@/components/XPBar";
 import type { CoreStatInfo } from "@/lib/statInfo";
+import { SKILL_MAX_LEVEL, xpToNextSkillLevel } from "@shared/schema";
 import { Sparkles, TrendingUp, Swords } from "lucide-react";
 
 type Props = {
   stat: CoreStatInfo | null;
-  value: number;
+  /** Current skill level 1–99 */
+  level: number;
+  /** Cumulative total XP in this stat (optional; used for remainder bar). */
+  totalXp?: number;
+  /** Remainder XP within the current level (preferred when available). */
+  xpIntoLevel?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function StatDetailDialog({ stat, value, open, onOpenChange }: Props) {
+export function StatDetailDialog({
+  stat,
+  level,
+  totalXp,
+  xpIntoLevel,
+  open,
+  onOpenChange,
+}: Props) {
   if (!stat) return null;
 
-  const capped = Math.max(0, Math.min(100, value));
+  const cappedLevel = Math.max(1, Math.min(SKILL_MAX_LEVEL, Math.floor(level || 1)));
+  const xpToNext = xpToNextSkillLevel(cappedLevel);
+  const into =
+    typeof xpIntoLevel === "number"
+      ? Math.max(0, xpIntoLevel)
+      : 0;
+  const maxed = cappedLevel >= SKILL_MAX_LEVEL;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -49,22 +68,37 @@ export function StatDetailDialog({ stat, value, open, onOpenChange }: Props) {
                   {stat.label}
                 </DialogTitle>
                 <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Level</span>
                   <span className="font-num text-2xl font-bold" style={{ color: stat.color }}>
-                    {capped}
+                    {cappedLevel}
                   </span>
-                  <span className="text-xs text-muted-foreground">/ 100</span>
+                  <span className="text-xs text-muted-foreground">/ {SKILL_MAX_LEVEL}</span>
                 </div>
               </div>
             </div>
-            <div className="h-2 w-full rounded-full bg-secondary/50 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${capped}%`,
-                  background: `linear-gradient(90deg, ${stat.color}, ${stat.color}aa)`,
-                }}
-              />
-            </div>
+            {!maxed ? (
+              <div>
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
+                  <span>XP to level {cappedLevel + 1}</span>
+                  <span className="font-num normal-case tracking-normal">
+                    {into.toLocaleString()} / {xpToNext.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-secondary/50 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${xpToNext > 0 ? Math.min(100, (into / xpToNext) * 100) : 0}%`,
+                      background: `linear-gradient(90deg, ${stat.color}, ${stat.color}aa)`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm font-semibold" style={{ color: stat.color }}>
+                Maxed — 99 achieved
+              </div>
+            )}
             <DialogDescription className="text-sm text-muted-foreground leading-relaxed sr-only">
               {stat.summary}
             </DialogDescription>
@@ -87,13 +121,16 @@ export function StatDetailDialog({ stat, value, open, onOpenChange }: Props) {
             title="How to level it up"
             body={stat.howToLevel}
           />
-
-          <div className="pt-1">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1.5">
-              Progress
+          {typeof totalXp === "number" && (
+            <div className="pt-1 text-xs text-muted-foreground">
+              Lifetime XP: <span className="font-num text-foreground">{totalXp.toLocaleString()}</span>
             </div>
-            <XPBar value={capped} max={100} showText={false} height="h-2" />
-          </div>
+          )}
+          {!maxed && (
+            <div className="pt-1">
+              <XPBar value={into} max={Math.max(1, xpToNext)} showText={false} height="h-2" />
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -72,7 +72,7 @@ export function WelcomeDialog({ userId }: { userId: string }) {
             </li>
             <li className="flex items-start gap-2.5">
               <Trophy className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-              <span><b>Skill trees</b> — train all 5 categories, up to Lv 99 each. Total Mastery up to 495.</span>
+              <span><b>Skill trees</b> — OSRS-style grind to Lv 99 on each of 5 categories. Hitting a 99 means something.</span>
             </li>
             <li className="flex items-start gap-2.5">
               <Sparkles className="w-4 h-4 text-accent shrink-0 mt-0.5" />

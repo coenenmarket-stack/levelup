@@ -31,12 +31,20 @@ export type Character = {
   totalXp: number;
   spendableXp: number;
   legacyScore: number;
+  /** Core stats are OSRS-style skill levels 1–99. */
   strength: number;
   intelligence: number;
   discipline: number;
   wealth: number;
   health: number;
   relationships: number;
+  /** Cumulative lifetime XP in each core stat (OSRS table). */
+  strengthXp?: number;
+  intelligenceXp?: number;
+  disciplineXp?: number;
+  wealthXp?: number;
+  healthXp?: number;
+  relationshipsXp?: number;
   currentStreak: number;
   longestStreak: number;
   lastCompletionDate: string | null;
@@ -52,9 +60,14 @@ export type Category = {
   name: string;
   icon: string;
   color: string;
+  /** XP progress within the current level (toward next). */
   xp: number;
+  /** Skill level 1–99. */
   level: number;
   rank: string;
+  /** Cumulative lifetime XP in this skill tree (OSRS table). */
+  totalXp?: number;
+  xpToNext?: number;
 };
 
 export type Quest = {
@@ -119,6 +132,7 @@ export type CompleteResult = {
   oldLevel: number;
   newLevel: number;
   xpEarned: number;
+  skillXpEarned?: number;
   streakBonusXp?: number;
   newlyUnlocked: Achievement[];
   xpToNext: number;

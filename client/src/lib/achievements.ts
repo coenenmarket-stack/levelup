@@ -68,11 +68,15 @@ export const ACHIEVEMENT_TEMPLATES: AchievementTemplate[] = [
   // Hustle proxy
   { key: "side-success", name: "Side Hustle Success", description: "Complete 25 wealth or career quests", icon: "🚀", rarity: "epic", category: "wealth", target: 25 },
 
-  // Skill level milestones
+  // Skill level milestones (OSRS-style 1–99)
   { key: "skill-any-5", name: "Skill Breakout", description: "Reach level 5 in any skill", icon: "📶", rarity: "common", category: "skills", target: 5 },
   { key: "skill-any-10", name: "Skill Specialist", description: "Reach level 10 in any skill", icon: "📡", rarity: "rare", category: "skills", target: 10 },
+  { key: "skill-any-50", name: "Halfway There", description: "Reach level 50 in any skill", icon: "⛰️", rarity: "epic", category: "skills", target: 50 },
+  { key: "skill-any-92", name: "Almost Cape", description: "Reach level 92 in any skill", icon: "🔥", rarity: "epic", category: "skills", target: 92 },
+  { key: "skill-any-99", name: "Skill Mastery", description: "Reach level 99 in any skill — the grind cape", icon: "🧥", rarity: "legendary", category: "skills", target: 99 },
   { key: "balanced-3", name: "Balanced Foundation", description: "Reach level 3 in all five skills", icon: "⚖️", rarity: "rare", category: "skills", target: 3 },
   { key: "balanced-5", name: "Five Pillars", description: "Reach level 5 in all five skills", icon: "🏛️", rarity: "epic", category: "skills", target: 5 },
+  { key: "balanced-50", name: "Well Rounded", description: "Reach level 50 in all five skills", icon: "🌟", rarity: "legendary", category: "skills", target: 50 },
 
   // Breadth
   { key: "all-five-skills", name: "Full Spectrum", description: "Complete quests in all five skills", icon: "🌈", rarity: "rare", category: "skills", target: 5 },
@@ -217,9 +221,13 @@ export function progressForAchievement(key: string, ctx: EvalContext): number {
       return countCategory(questComps, "wealth", "career", "finance", "hustle");
     case "skill-any-5":
     case "skill-any-10":
+    case "skill-any-50":
+    case "skill-any-92":
+    case "skill-any-99":
       return maxSkill;
     case "balanced-3":
     case "balanced-5":
+    case "balanced-50":
       return minSkill;
     case "all-five-skills":
       return modernSkills.size;

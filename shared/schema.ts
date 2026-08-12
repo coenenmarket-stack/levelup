@@ -105,7 +105,24 @@ export type Reward = {
 export type InsertReward = Omit<Reward, "id" | "redeemed" | "createdAt">;
 
 // ---------- Game constants ----------
+/** Hero / account level curve (separate from OSRS skill grind). */
 export const XP_TO_NEXT_LEVEL = (level: number) => Math.round(50 + level * 75);
+
+export {
+  SKILL_MAX_LEVEL,
+  SKILL_XP_BY_DIFFICULTY,
+  HERO_XP_TO_NEXT_LEVEL,
+  xpForLevel,
+  xpToNextSkillLevel,
+  levelFromTotalXp,
+  remainderXpTowardNext,
+  applySkillXp,
+  startingLevelFromAssessment,
+  skillRankForLevel,
+  SKILL_RANKS,
+} from "./osrsXp";
+
+/** @deprecated Prefer skillRankForLevel for 1–99 skill trees. Kept for hero titles UI. */
 export const RANKS = ["Novice", "Apprentice", "Adept", "Expert", "Master", "Grandmaster", "Legend"] as const;
 export const rankForLevel = (level: number) => RANKS[Math.min(Math.floor((level - 1) / 5), RANKS.length - 1)];
 export const TITLES = [
@@ -123,6 +140,7 @@ export const titleForLevel = (level: number) => {
   for (const t of TITLES) if (level >= t.min) cur = t.title;
   return cur;
 };
+/** Hero / spendable XP by difficulty (skills use SKILL_XP_BY_DIFFICULTY). */
 export const DIFFICULTY_XP: Record<string, number> = { easy: 10, medium: 25, hard: 50 };
 
 export const CATEGORY_DEFS = [
