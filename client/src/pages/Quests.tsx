@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DailyProgressBar } from "@/components/quests/DailyProgressBar";
 import { QuestRow } from "@/components/quests/QuestRow";
 import { QuestSection } from "@/components/quests/QuestSection";
+import { CatalogQuestCard } from "@/components/quests/CatalogQuestCard";
 import { splitQuestsByCompletion, computeDailyProgress } from "@/lib/questUtils";
 import {
   CATEGORY_KEYS,
@@ -82,7 +83,7 @@ export default function Quests() {
           Quests
         </h1>
         <p className="text-sm text-muted-foreground">
-          Complete active quests for XP — or browse 750 catalog missions across all five skills.
+          Complete active quests for XP — or browse 1,000 catalog missions across all five skills.
         </p>
       </div>
 
@@ -299,49 +300,18 @@ function CatalogBrowser({ quests }: { quests: Quest[] }) {
         ) : (
           pageItems.map((item) => {
             const owned = ownedCatalogIds.has(item.id);
-            const m = diffMeta[item.difficulty];
             return (
-              <div
+              <CatalogQuestCard
                 key={item.id}
-                data-testid={`catalog-quest-${item.id}`}
-                className="surface rounded-2xl p-4 flex items-start gap-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold leading-snug">{item.title}</div>
-                  <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.description}</div>
-                  <div className="text-[11px] text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="capitalize">{item.category}</span>
-                    <span aria-hidden>·</span>
-                    <span>{item.isDaily ? "Daily" : "Side quest"}</span>
-                    <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border ${m.className}`}>
-                      {m.label}
-                    </span>
-                    <span className="font-num gold-text font-semibold">+{item.xpReward} XP</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={owned || addingId === item.id || addMut.isPending}
-                  onClick={() => {
-                    if (owned || addMut.isPending) return;
-                    addMut.mutate(item);
-                  }}
-                  data-testid={`button-add-catalog-${item.id}`}
-                  className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold bg-primary text-primary-foreground hover-elevate disabled:opacity-60 flex items-center gap-1.5"
-                >
-                  {addingId === item.id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : owned ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" /> Added
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" /> Add
-                    </>
-                  )}
-                </button>
-              </div>
+                item={item}
+                owned={owned}
+                adding={addingId === item.id}
+                disabled={addMut.isPending}
+                onAdd={() => {
+                  if (owned || addMut.isPending) return;
+                  addMut.mutate(item);
+                }}
+              />
             );
           })
         )}

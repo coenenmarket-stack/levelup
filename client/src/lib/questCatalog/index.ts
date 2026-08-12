@@ -5,7 +5,8 @@ import { FAMILY_QUESTS } from "./family";
 import { MINDSET_QUESTS } from "./mindset";
 import type { QuestCatalogCategory, QuestCatalogDifficulty, QuestCatalogItem } from "./types";
 
-export type { QuestCatalogCategory, QuestCatalogDifficulty, QuestCatalogItem } from "./types";
+export type { QuestCatalogCategory, QuestCatalogDifficulty, QuestCatalogItem, QuestExplanation } from "./types";
+export { explainQuest } from "./types";
 
 export const XP_BY_DIFFICULTY = { easy: 10, medium: 25, hard: 50 } as const;
 
@@ -41,7 +42,8 @@ export function filterCatalog(opts: {
     if (!q) return true;
     return (
       item.title.toLowerCase().includes(q) ||
-      item.description.toLowerCase().includes(q)
+      item.description.toLowerCase().includes(q) ||
+      (item.howto ?? "").toLowerCase().includes(q)
     );
   });
 }

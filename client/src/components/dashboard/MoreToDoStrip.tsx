@@ -83,7 +83,7 @@ export function MoreToDoStrip() {
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Side quest</div>
               <div className="font-semibold text-sm">Browse quest catalog</div>
-              <div className="text-xs text-muted-foreground mt-0.5">750 missions across 5 skills</div>
+              <div className="text-xs text-muted-foreground mt-0.5">1,000 missions across 5 skills</div>
             </div>
           </Link>
         )}
