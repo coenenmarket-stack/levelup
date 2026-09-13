@@ -34,6 +34,7 @@ Current launch flags (see `client/src/lib/featureFlags.ts`): social, remote push
 |------|-------|----------|------------|
 | Sign in email | Create/sign in with password | Lands in app / onboarding | `TF` |
 | Sign in Google | Native Google path | Session restores | `TF` |
+| Sign in Apple | Tap Continue with Apple | Native Apple sheet → session in app (not WKWebView redirect) | `TF` + Firebase Apple provider |
 | Sign out | Settings → Sign out | Returns to auth | `TF` |
 | Session restore | Kill app, reopen | Still signed in | `TF` |
 | Existing user | Sign in account with progress | Character + quests restore | `TF` |

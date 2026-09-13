@@ -21,6 +21,7 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   updatePassword,
+  updateProfile,
   reauthenticateWithCredential,
   EmailAuthProvider,
   deleteUser,
@@ -29,6 +30,7 @@ import {
 } from "firebase/auth";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
+import { AppleSignIn, SignInScope } from "@capawesome/capacitor-apple-sign-in";
 import { httpsCallable } from "firebase/functions";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,6 +51,19 @@ import {
   NATIVE_FACEBOOK_AUTH_CALLBACK_PREFIX,
   CLAIM_NATIVE_FACEBOOK_SESSION,
 } from "./socialConfig";
+
+/** Cryptographically random hex string used as Apple/Firebase raw nonce. */
+function createRawNonce(byteLength = 32): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** SHA-256 hex digest — Apple's ASAuthorization request expects the hashed nonce. */
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 type AuthProviderKey = "password" | "google" | "apple" | "facebook";
 
@@ -460,9 +475,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (fbCred?.accessToken) await linkFacebookFromAccessToken(fbCred.accessToken);
   };
 
+  /**
+   * Native Sign in with Apple (AuthenticationServices) → Firebase credential.
+   * Do NOT use signInWithRedirect inside WKWebView — it fails the same way Google
+   * did before the Safari bridge. Native SIWA also satisfies App Store 4.8 UX.
+   */
+  const appleSignInNative = async () => {
+    const rawNonce = createRawNonce();
+    const hashedNonce = await sha256Hex(rawNonce);
+    let appleResult;
+    try {
+      appleResult = await AppleSignIn.signIn({
+        scopes: [SignInScope.Email, SignInScope.FullName],
+        nonce: hashedNonce,
+      });
+    } catch (e: unknown) {
+      const code = String((e as { code?: string })?.code ?? "");
+      if (
+        code === "SIGN_IN_CANCELED" ||
+        code === "SIGN_IN_CANCELLED" ||
+        /cancel/i.test(String((e as Error)?.message ?? ""))
+      ) {
+        throw new Error("Sign-in was cancelled.");
+      }
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+    if (!appleResult?.idToken) throw new Error("Missing Apple ID token");
+
+    const credential = appleProvider.credential({
+      idToken: appleResult.idToken,
+      rawNonce,
+    });
+    const cred = await signInWithCredential(auth, credential);
+
+    // Apple only returns the name on the first authorization — persist it.
+    const displayName = [appleResult.givenName, appleResult.familyName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (displayName && !cred.user.displayName) {
+      await updateProfile(cred.user, { displayName }).catch(() => {});
+    }
+    await ensureProfile(cred.user, "apple");
+    if (displayName) {
+      const ref = doc(db, "users", cred.user.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists() && !(snap.data() as ProfileDoc).displayName) {
+        await updateDoc(ref, { displayName }).catch(() => {});
+      }
+    }
+  };
+
   const appleSignIn = async () => {
     // Apple Sign In must be offered alongside other social logins (App Store 4.8).
-    if (shouldUseNativeGoogleBrowser() || shouldUseGoogleRedirect()) {
+    if (shouldUseNativeGoogleBrowser()) {
+      await appleSignInNative();
+      return;
+    }
+    if (shouldUseGoogleRedirect()) {
       await signInWithRedirect(auth, appleProvider);
       return;
     }
