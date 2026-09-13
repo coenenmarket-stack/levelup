@@ -190,5 +190,6 @@ confirm the build's git commit includes the icon fix.
 | Feature | Package |
 |---|---|
 | Push notifications | `@capacitor/push-notifications` + FCM |
-| Native Google/Apple auth | `@capacitor-firebase/authentication` |
+| Native Google auth | Safari Browser bridge (`native-google-auth.html`) |
+| Native Apple auth | `@capawesome/capacitor-apple-sign-in` → Firebase credential (shipped) |
 | Haptics on quest complete | `@capacitor/haptics` |

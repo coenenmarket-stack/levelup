@@ -31,14 +31,26 @@ Rebuild the web app / TestFlight IPA after setting this — the Auth buttons cal
 
 ## 3. Apple Sign In (required with social logins — App Store 4.8)
 
+**How the app signs in**
+
+| Surface | Path |
+|---------|------|
+| Capacitor iOS (TestFlight / App Store) | Native **Sign in with Apple** via `@capawesome/capacitor-apple-sign-in` → Firebase `signInWithCredential` (nonce + ID token). **Not** `signInWithRedirect` in WKWebView. |
+| Desktop web | Firebase `signInWithPopup` with `OAuthProvider("apple.com")` |
+| Mobile Safari / PWA | Firebase `signInWithRedirect` |
+
+**Apple Developer + Firebase (required before TestFlight works)**
+
 1. Apple Developer → Identifiers → App ID `com.coenenmarket.leveluplife` → enable **Sign In with Apple**.
 2. Create a **Services ID** for web (e.g. `com.coenenmarket.leveluplife.web`) with:
    - Domains: `level-up-life-73702.web.app`, `level-up-life-73702.firebaseapp.com`
    - Return URLs: `https://level-up-life-73702.web.app/__/auth/handler`
 3. Create a Sign in with Apple **Key** (.p8), note Key ID + Team ID.
-4. Firebase Console → Authentication → Sign-in method → **Apple** → enable → paste Services ID, Team ID, Key ID, private key.
+4. Firebase Console → Authentication → Sign-in method → **Apple** → enable → paste Services ID, Team ID, Key ID, private key (.p8 contents).
 
-Capacitor iOS: enable the **Sign in with Apple** capability on the Xcode App target (Signing & Capabilities).
+Capacitor iOS: the **Sign in with Apple** entitlement is already in `ios/App/App/App.entitlements` (`com.apple.developer.applesignin`). Confirm it still shows under Xcode → Signing & Capabilities after `npx cap sync ios`.
+
+If Apple sign-in fails with `auth/operation-not-allowed`, the Firebase Apple provider is not enabled. If it fails with `auth/missing-or-invalid-nonce`, rebuild — the native path must send a SHA-256 hashed nonce to Apple and the raw nonce to Firebase.
 
 ## 4. Deployed backend pieces
 
@@ -63,8 +75,10 @@ So the list is often small until both sides use Facebook Login in Level Up. **In
 
 ## 6. Smoke checklist
 
-- [ ] Firebase Facebook + Apple providers enabled  
-- [ ] `VITE_FACEBOOK_APP_ID` set and app rebuilt  
+- [ ] Firebase Facebook + Apple providers enabled (Apple: Services ID + Team ID + Key ID + .p8)  
+- [ ] Apple App ID has Sign in with Apple; Xcode entitlement present  
+- [ ] `VITE_FACEBOOK_APP_ID` set and app rebuilt (Facebook only)  
 - [ ] Web: Continue with Facebook / Apple on Auth  
+- [ ] TestFlight: **Continue with Apple** shows the native Apple sheet and lands in the app (not a blank redirect / forever spinner)  
 - [ ] Friends → Find Facebook friends (expect empty or matches)  
 - [ ] TestFlight: Facebook opens Safari bridge and returns to app  

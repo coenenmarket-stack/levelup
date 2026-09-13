@@ -476,9 +476,18 @@ function parseError(err: any): string {
   if (code.includes("auth/email-already-in-use")) return "That email already has an account.";
   if (code.includes("auth/too-many-requests")) return "Too many attempts. Wait a minute and try again.";
   if (code.includes("auth/network-request-failed")) return "Network issue. Check your connection and try again.";
-  if (code.includes("auth/popup-closed-by-user")) return "Sign-in was cancelled.";
+  if (code.includes("auth/popup-closed-by-user") || code === "SIGN_IN_CANCELED") {
+    return "Sign-in was cancelled.";
+  }
+  if (code.includes("auth/missing-or-invalid-nonce")) {
+    return "Apple sign-in could not be verified. Please try again.";
+  }
+  if (code.includes("auth/operation-not-allowed")) {
+    return "Apple sign-in isn’t enabled yet. Check Firebase Authentication → Apple.";
+  }
 
   const msg = err?.message ?? "Something went wrong";
+  if (/sign-?in was cancelled/i.test(String(msg))) return "Sign-in was cancelled.";
   const m = String(msg).match(/^\d+:\s*(\{.*\})$/);
   if (m) {
     try {
