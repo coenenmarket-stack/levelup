@@ -22,5 +22,9 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // Allow Google/Apple auth popups to call window.closed (avoids COOP breakages).
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    },
   },
 });

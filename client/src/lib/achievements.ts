@@ -325,8 +325,11 @@ export async function topUnlockedAchievementKeys(uid: string, limit = 3): Promis
 }
 
 export async function seedAchievementsOnOnboarding(uid: string): Promise<void> {
+  // Batch writes (~53 docs) — sequential setDoc was a major signup delay.
+  const col = collection(db, "characters", uid, "achievements");
+  const batch = writeBatch(db);
   for (const a of ACHIEVEMENT_TEMPLATES) {
-    await setDoc(doc(db, "characters", uid, "achievements", a.key), {
+    batch.set(doc(col, a.key), {
       key: a.key,
       name: a.name,
       description: a.description,
@@ -339,4 +342,5 @@ export async function seedAchievementsOnOnboarding(uid: string): Promise<void> {
       target: a.target,
     });
   }
+  await batch.commit();
 }

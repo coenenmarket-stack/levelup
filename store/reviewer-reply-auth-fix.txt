@@ -1,0 +1,20 @@
+Hello App Review Team,
+
+Thank you for the feedback on sign-in.
+
+We have fixed the reported Google and Apple authentication issues:
+
+1) Apple Sign In — The app was sending Apple’s return URL on our Firebase Hosting domain (*.web.app). Apple’s Services ID is registered for the default Firebase auth domain (*.firebaseapp.com), which caused “Invalid web redirect url.” Sign in with Apple now completes OAuth on the firebaseapp.com auth domain and then establishes the Firebase session in-app.
+
+2) Google Sign In — We hardened the popup / redirect flow (including Cross-Origin-Opener-Policy: same-origin-allow-popups) so Google account selection completes reliably on web and returns to the app.
+
+3) Signup performance — New-account onboarding was slow because character seeding performed many sequential Firestore writes. Seeding is now batched and skips unnecessary wipe scans for brand-new accounts, so Create Character typically finishes in a few seconds.
+
+How to verify:
+• Open the app → Continue with Apple (or Google) and complete sign-in.
+• Or create a new email/password account, finish onboarding, and confirm the first quest completes and awards XP.
+
+Please let us know if you need anything else from our side.
+
+Thank you,
+Level Up Life team

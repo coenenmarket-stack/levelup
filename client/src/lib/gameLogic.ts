@@ -360,7 +360,7 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
 
   const charRef = doc(db, "characters", uid);
 
-  // Full progression wipe (chunked) before re-seed — includes weekly/daily caches.
+  // Full progression wipe (chunked) before re-seed — no-ops fast for brand-new accounts.
   await wipeCharacterProgress(uid);
 
   // Write the character document
@@ -382,11 +382,9 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
   }
   await catBatch.commit();
 
-  // Seed quests — universal pool (random sample) + full class-specific list,
-  // de-duplicated by title so we don't double-seed shared habits.
+  // Seed quests — universal pool + full class-specific list, de-duplicated by title.
   const classQuests = (CLASS_QUEST_TEMPLATES[input.className] ?? CLASS_QUEST_TEMPLATES.professional)
     .map(q => ({ ...q, classTag: input.className }));
-  // Seed the full universal pool so daily rotation has lots to pick from.
   const universalSeed = UNIVERSAL_QUESTS.map(q => ({ ...q, classTag: null }));
   const seen = new Set<string>();
   const seedQuests = [...classQuests, ...universalSeed].filter(q => {
@@ -394,16 +392,29 @@ export async function finalizeOnboardingLocal(uid: string, input: FinalizeInput)
     seen.add(q.title);
     return true;
   });
-  for (const q of seedQuests) {
-    await addDoc(collection(charRef, "quests"), { ...q, active: true, createdAt: nowISO() });
+
+  // Batch quest + reward writes (was ~40–100 sequential addDoc round-trips).
+  const QUEST_CHUNK = 400;
+  for (let i = 0; i < seedQuests.length; i += QUEST_CHUNK) {
+    const batch = writeBatch(db);
+    for (const q of seedQuests.slice(i, i + QUEST_CHUNK)) {
+      const ref = doc(collection(charRef, "quests"));
+      batch.set(ref, { ...q, active: true, createdAt: nowISO() });
+    }
+    await batch.commit();
   }
 
-  // Seed achievements (Phase 2 expanded catalog)
+  // Seed achievements (Phase 2 expanded catalog) — single batched write.
   await seedAchievementsOnOnboarding(uid);
 
   // Seed rewards
-  for (const r of STARTER_REWARDS) {
-    await addDoc(collection(charRef, "rewards"), { ...r, redeemed: 0, createdAt: nowISO() });
+  {
+    const batch = writeBatch(db);
+    for (const r of STARTER_REWARDS) {
+      const ref = doc(collection(charRef, "rewards"));
+      batch.set(ref, { ...r, redeemed: 0, createdAt: nowISO() });
+    }
+    await batch.commit();
   }
 
   // Mark user as onboarded

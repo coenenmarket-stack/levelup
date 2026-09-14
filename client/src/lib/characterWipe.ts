@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   writeBatch,
   type DocumentReference,
@@ -56,12 +57,22 @@ export async function wipeCharacterSubcollection(
 /**
  * Hard-reset wipe used by schema migration and re-onboarding.
  * Removes progression data so OSRS skill state cannot leak across resets.
+ *
+ * New accounts skip the 15 empty collection scans (big signup win).
+ * Existing characters wipe subcollections in parallel.
  */
 export async function wipeCharacterProgress(uid: string): Promise<void> {
   const charRef = doc(db, "characters", uid);
-  for (const sub of CHARACTER_WIPE_SUBCOLLECTIONS) {
-    await wipeCharacterSubcollection(uid, sub);
+  const existing = await getDoc(charRef);
+  if (!existing.exists()) {
+    // Brand-new signup — nothing to wipe. Avoid ~15 sequential empty getDocs.
+    return;
   }
+
+  await Promise.all(
+    CHARACTER_WIPE_SUBCOLLECTIONS.map((sub) => wipeCharacterSubcollection(uid, sub)),
+  );
+
   // publicProfiles is top-level — clear so friends don't see pre-reset levels.
   try {
     await deleteDoc(doc(db, "publicProfiles", uid));
