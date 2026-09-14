@@ -476,9 +476,26 @@ function parseError(err: any): string {
   if (code.includes("auth/email-already-in-use")) return "That email already has an account.";
   if (code.includes("auth/too-many-requests")) return "Too many attempts. Wait a minute and try again.";
   if (code.includes("auth/network-request-failed")) return "Network issue. Check your connection and try again.";
-  if (code.includes("auth/popup-closed-by-user")) return "Sign-in was cancelled.";
+  if (code.includes("auth/popup-closed-by-user") || code.includes("auth/cancelled-popup-request")) {
+    return "Sign-in was cancelled.";
+  }
+  if (code.includes("auth/popup-blocked")) {
+    return "Pop-up was blocked. Allow pop-ups for this site, or try again.";
+  }
+  if (code.includes("auth/unauthorized-domain")) {
+    return "This domain isn’t authorized for sign-in. Add it in Firebase Authentication → Settings.";
+  }
+  if (code.includes("auth/operation-not-allowed")) {
+    return "That sign-in method isn’t enabled yet. Check Firebase Authentication → Sign-in method.";
+  }
+  if (code.includes("auth/account-exists-with-different-credential")) {
+    return "An account already exists with this email using a different sign-in method.";
+  }
 
   const msg = err?.message ?? "Something went wrong";
+  if (/invalid web redirect url|invalid_request/i.test(String(msg))) {
+    return "Apple Sign In isn’t fully configured yet. In Apple Developer → Services ID, add return URL https://level-up-life-73702.firebaseapp.com/__/auth/handler (and verify the domain).";
+  }
   const m = String(msg).match(/^\d+:\s*(\{.*\})$/);
   if (m) {
     try {

@@ -1,48 +1,12 @@
 /**
  * Diagnostic: App Store Connect version readiness.
  * Run: node script/asc-status-check.mjs
+ * Auth: ASC_API_PRIVATE_KEY (PEM) or ASC_KEY_PATH — see script/asc-auth.mjs
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
+import { ASC_APP_ID as APP_ID, ascApi as api } from "./asc-auth.mjs";
 
-const KEY_ID = "JGNQY22FBN";
-const ISSUER_ID = "b0b80a05-310f-4550-b15c-262f1d87e87b";
-const APP_ID = "6792917459";
-const KEY_PATH = "c:/Users/Coene/Downloads/AuthKey_JGNQY22FBN.p8";
 const VERSION_STRING = process.env.ASC_VERSION || "1.0.1";
-const BASE = "https://api.appstoreconnect.apple.com";
-
-function token() {
-  const header = Buffer.from(JSON.stringify({ alg: "ES256", kid: KEY_ID, typ: "JWT" })).toString("base64url");
-  const now = Math.floor(Date.now() / 1000);
-  const payload = Buffer.from(
-    JSON.stringify({ iss: ISSUER_ID, iat: now, exp: now + 1140, aud: "appstoreconnect-v1" }),
-  ).toString("base64url");
-  const data = `${header}.${payload}`;
-  const key = crypto.createPrivateKey(fs.readFileSync(KEY_PATH));
-  const sig = crypto.sign("sha256", Buffer.from(data), { key, dsaEncoding: "ieee-p1363" });
-  return `${data}.${Buffer.from(sig).toString("base64url")}`;
-}
-
-async function api(method, urlPath, body) {
-  const res = await fetch(`${BASE}${urlPath}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token()}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = { raw: text.slice(0, 500) };
-  }
-  return { status: res.status, ok: res.ok, json };
-}
 
 async function main() {
   const out = {};

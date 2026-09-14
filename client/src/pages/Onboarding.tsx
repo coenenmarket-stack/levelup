@@ -189,7 +189,8 @@ export default function OnboardingPage() {
       return res.json();
     },
     onSuccess: async () => {
-      await qc.invalidateQueries();
+      // Don't block navigation on a full-cache refetch storm after seeding.
+      void qc.invalidateQueries();
       await refresh();
       toast({ title: "Character created", description: "Your adventure begins now." });
       navigate("/");

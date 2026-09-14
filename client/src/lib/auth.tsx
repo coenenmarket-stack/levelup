@@ -17,6 +17,7 @@ import {
   getRedirectResult,
   GoogleAuthProvider,
   FacebookAuthProvider,
+  OAuthProvider,
   signOut,
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -26,13 +27,14 @@ import {
   deleteUser,
   onAuthStateChanged,
   User as FirebaseUser,
+  type UserCredential,
 } from "firebase/auth";
 import { App as CapApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { httpsCallable } from "firebase/functions";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from "firebase/firestore";
 import { useQueryClient } from "@tanstack/react-query";
-import { auth, db, functions, googleProvider, facebookProvider, appleProvider } from "./firebase";
+import { auth, db, functions, googleProvider, facebookProvider, appleProvider, getAppleOAuthAuth } from "./firebase";
 import type { Me } from "./types";
 import { SCHEMA_VERSION } from "./gameLogic";
 import { wipeCharacterProgress } from "./characterWipe";
@@ -51,6 +53,28 @@ import {
 } from "./socialConfig";
 
 type AuthProviderKey = "password" | "google" | "apple" | "facebook";
+
+/** Finish Apple OAuth that ran on the secondary firebaseapp.com auth app. */
+async function adoptAppleCredential(result: UserCredential): Promise<void> {
+  const credential = OAuthProvider.credentialFromResult(result);
+  if (!credential) {
+    throw new Error("Apple sign-in returned no credential. Please try again.");
+  }
+  const cred = await signInWithCredential(auth, credential);
+  await ensureProfile(cred.user, "apple");
+}
+
+function isPopupFallbackError(err: unknown): boolean {
+  const code = String((err as { code?: string })?.code ?? "");
+  const msg = String((err as { message?: string })?.message ?? "");
+  return (
+    code === "auth/popup-blocked" ||
+    code === "auth/popup-closed-by-user" ||
+    code === "auth/cancelled-popup-request" ||
+    code === "auth/internal-error" ||
+    /cross-origin-opener|window\.closed|coop/i.test(msg)
+  );
+}
 
 function providerKeyFromUser(user: FirebaseUser): AuthProviderKey {
   const ids = user.providerData.map((p) => p.providerId);
@@ -192,25 +216,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // never fire onAuthStateChanged — which left TestFlight on the spinner forever.
   useEffect(() => {
     let cancelled = false;
-    const AUTH_BOOT_MS = 4000;
-    const REDIRECT_MS = 2500;
+    // Give redirect completion a bit more room — 2.5s was dropping slow Apple/Google returns.
+    const AUTH_BOOT_MS = 8000;
+    const REDIRECT_MS = 6000;
 
     const bootTimer = window.setTimeout(() => {
-      if (!cancelled) {
-        console.warn("Auth boot timed out — showing sign-in");
-        setIsLoading(false);
-      }
+      if (cancelled) return;
+      // Only warn if we are still stuck on the splash; avoid noisy logs after a normal boot.
+      setIsLoading((stillLoading) => {
+        if (stillLoading) {
+          console.warn("Auth boot timed out — showing sign-in");
+        }
+        return false;
+      });
     }, AUTH_BOOT_MS);
 
-    // Complete Google redirect sign-in (required for iOS Safari), but never block boot.
-    void Promise.race([
-      getRedirectResult(auth),
-      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), REDIRECT_MS)),
-    ])
+    // Complete redirect sign-in (iOS Safari + Apple secondary auth app). Never block boot forever.
+    const timedRedirect = (p: Promise<UserCredential | null>) =>
+      Promise.race([
+        p,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), REDIRECT_MS)),
+      ]);
+
+    void timedRedirect(getRedirectResult(auth))
       .then(async (result) => {
         if (result?.user) await ensureProfile(result.user, providerKeyFromUser(result.user));
       })
       .catch((e) => console.error("getRedirectResult failed", e));
+
+    // Apple OAuth runs on the secondary firebaseapp.com app — complete it and adopt into primary auth.
+    void timedRedirect(getRedirectResult(getAppleOAuthAuth()))
+      .then(async (result) => {
+        if (result?.user) await adoptAppleCredential(result);
+      })
+      .catch((e) => console.error("Apple getRedirectResult failed", e));
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (cancelled) return;
@@ -376,8 +415,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithRedirect(auth, googleProvider);
       return;
     }
-    const cred = await signInWithPopup(auth, googleProvider);
-    await ensureProfile(cred.user, "google");
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      await ensureProfile(cred.user, "google");
+    } catch (err) {
+      // COOP / popup blockers can break window.closed polling — fall back to redirect.
+      if (!isPopupFallbackError(err)) throw err;
+      const code = String((err as { code?: string })?.code ?? "");
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        throw err; // genuine cancel — don't redirect
+      }
+      await signInWithRedirect(auth, googleProvider);
+    }
   };
 
   const facebookSignInNativeBrowser = () =>
@@ -462,12 +511,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const appleSignIn = async () => {
     // Apple Sign In must be offered alongside other social logins (App Store 4.8).
+    // Use the secondary firebaseapp.com auth app so Apple's return URL matches the
+    // Services ID default (`…firebaseapp.com/__/auth/handler`). Using web.app here
+    // produces Apple's "Invalid web redirect url" error unless that URL was also registered.
+    const appleAuth = getAppleOAuthAuth();
     if (shouldUseNativeGoogleBrowser() || shouldUseGoogleRedirect()) {
-      await signInWithRedirect(auth, appleProvider);
+      await signInWithRedirect(appleAuth, appleProvider);
       return;
     }
-    const result = await signInWithPopup(auth, appleProvider);
-    await ensureProfile(result.user, "apple");
+    try {
+      const result = await signInWithPopup(appleAuth, appleProvider);
+      await adoptAppleCredential(result);
+    } catch (err) {
+      if (!isPopupFallbackError(err)) throw err;
+      const code = String((err as { code?: string })?.code ?? "");
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        throw err;
+      }
+      await signInWithRedirect(appleAuth, appleProvider);
+    }
   };
 
   /** Popup/re-auth to obtain a fresh Facebook access token for Graph friends. */

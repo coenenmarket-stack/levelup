@@ -18,7 +18,7 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyBRtjVakNyozHXP_lVKoDuINTumRYOl7i4",
   // IMPORTANT: must match the hosting domain to avoid Safari ITP breaking auth.
   // Requires `https://level-up-life-73702.web.app/__/auth/handler` to be added
@@ -31,8 +31,35 @@ const firebaseConfig = {
   measurementId: "G-ESB32YZ7TV",
 };
 
+/** Default Google-hosted auth domain. Apple Services IDs are usually registered
+ *  against this return URL (`…firebaseapp.com/__/auth/handler`). We keep the
+ *  primary app on web.app (Safari ITP) and use this only for Apple OAuth. */
+export const APPLE_OAUTH_AUTH_DOMAIN = "level-up-life-73702.firebaseapp.com";
+
 // Avoid double-init in Vite HMR
 const app: FirebaseApp = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
+
+/**
+ * Secondary Firebase app used ONLY for Sign in with Apple.
+ * Apple rejects `*.web.app/__/auth/handler` unless that exact return URL was
+ * added to the Services ID — Firebase Console defaults to firebaseapp.com.
+ * Completing Apple on this app, then `signInWithCredential` on the primary
+ * auth, keeps the rest of the client on the ITP-safe web.app authDomain.
+ */
+export function getAppleOAuthAuth(): Auth {
+  const name = "apple-oauth";
+  const existing = getApps().find((a) => a.name === name);
+  const appleApp =
+    existing ??
+    initializeApp(
+      {
+        ...firebaseConfig,
+        authDomain: APPLE_OAUTH_AUTH_DOMAIN,
+      },
+      name,
+    );
+  return getAuth(appleApp);
+}
 
 /**
  * Capacitor WKWebView can hang forever on the default getAuth() + browser

@@ -1,54 +1,17 @@
 /**
  * Submit App Store version for Apple review via ASC reviewSubmissions API.
  * Run: node script/asc-submit-for-review.mjs
- * Does not print the private key.
+ * Auth: ASC_API_PRIVATE_KEY (PEM) or ASC_KEY_PATH — see script/asc-auth.mjs
  *
  * Modern 3-step flow (appStoreVersionSubmissions CREATE is forbidden):
  * 1. POST /v1/reviewSubmissions (app + platform IOS) — reuse open on 409
  * 2. POST /v1/reviewSubmissionItems (reviewSubmission + appStoreVersion)
  * 3. PATCH /v1/reviewSubmissions/{id} with attributes.submitted: true
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
+import { ASC_APP_ID as APP_ID, ascApi as api } from "./asc-auth.mjs";
 
-const KEY_ID = "JGNQY22FBN";
-const ISSUER_ID = "b0b80a05-310f-4550-b15c-262f1d87e87b";
-const APP_ID = "6792917459";
-const KEY_PATH = "c:/Users/Coene/Downloads/AuthKey_JGNQY22FBN.p8";
 const VERSION_STRING = process.env.ASC_VERSION || "1.0.1";
-const BASE = "https://api.appstoreconnect.apple.com";
-
-function token() {
-  const header = Buffer.from(JSON.stringify({ alg: "ES256", kid: KEY_ID, typ: "JWT" })).toString("base64url");
-  const now = Math.floor(Date.now() / 1000);
-  const payload = Buffer.from(
-    JSON.stringify({ iss: ISSUER_ID, iat: now, exp: now + 1140, aud: "appstoreconnect-v1" }),
-  ).toString("base64url");
-  const data = `${header}.${payload}`;
-  const key = crypto.createPrivateKey(fs.readFileSync(KEY_PATH));
-  const sig = crypto.sign("sha256", Buffer.from(data), { key, dsaEncoding: "ieee-p1363" });
-  return `${data}.${Buffer.from(sig).toString("base64url")}`;
-}
-
-async function api(method, urlPath, body) {
-  const res = await fetch(`${BASE}${urlPath}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token()}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    json = { raw: text.slice(0, 500) };
-  }
-  return { status: res.status, ok: res.ok, json };
-}
 
 function errDetails(json) {
   return (json?.errors || []).map((e) => ({
